@@ -24,6 +24,9 @@ export class JarvisVoice {
     this.onVoiceError = () => {};
     this.serverDownUntil = 0;
     this.generation = 0;
+    this.inflight = 0; // pedidos de áudio em andamento
+    this.waiters = [];
+    this.currentText = ""; // frase que está tocando agora (para ele não obedecer à própria voz)
   }
 
   async init() {
@@ -40,6 +43,7 @@ export class JarvisVoice {
     this.input.connect(comp);
     comp.connect(this.analyser);
     this.analyser.connect(ctx.destination);
+    this.keepAwake();
 
     try {
       const cfg = await (await fetch("/api/config")).json();
@@ -54,6 +58,26 @@ export class JarvisVoice {
       this.pickBrowserVoice();
       speechSynthesis.addEventListener("voiceschanged", () => this.pickBrowserVoice());
     }
+  }
+
+  // Um chiado baixíssimo (inaudível) o tempo todo. Soundbars e saídas HDMI "dormem" quando
+  // ficam em silêncio e cortam o começo da próxima fala; assim elas ficam sempre acordadas.
+  keepAwake() {
+    const ctx = this.ctx;
+    const buf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.0002;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    src.connect(ctx.destination);
+    src.start();
+  }
+
+  // Por onde sai a voz (soundbar, headset...). Vazio = a saída padrão do Windows.
+  async setOutput(deviceId) {
+    if (!this.ctx?.setSinkId) throw new Error("Este navegador não deixa escolher a saída de som.");
+    await this.ctx.setSinkId(deviceId || "");
   }
 
   // O navegador pode bloquear som até o primeiro clique; diz se o áudio está liberado.
@@ -95,12 +119,36 @@ export class JarvisVoice {
     if (!clean) return;
     const item = { text: clean, gen: this.generation };
     // Já pede o áudio neural enquanto a frase anterior ainda está tocando.
-    if (this.neural) item.audio = this.fetchNeural(clean);
+    if (this.neural) item.audio = this.fetchNeural(clean, item.gen);
     this.queue.push(item);
     this.pump();
   }
 
-  async fetchNeural(text) {
+  // No máximo dois pedidos de áudio por vez: o plano grátis da ElevenLabs recusa mais que isso,
+  // e cada recusa fazia a voz trocar ou engasgar no meio de uma resposta longa.
+  async slot() {
+    if (this.inflight < 2) return void this.inflight++;
+    await new Promise((resolve) => this.waiters.push(resolve));
+  }
+
+  release() {
+    const next = this.waiters.shift();
+    if (next) next();
+    else this.inflight--;
+  }
+
+  async fetchNeural(text, gen) {
+    await this.slot();
+    try {
+      // Cortado enquanto esperava a vez: nem pede.
+      if (gen !== this.generation) return null;
+      return await this.requestNeural(text);
+    } finally {
+      this.release();
+    }
+  }
+
+  async requestNeural(text) {
     // Se a voz do servidor acabou de falhar, nem tenta: fala na hora com a do navegador.
     if (Date.now() < this.serverDownUntil) return null;
     try {
@@ -137,10 +185,12 @@ export class JarvisVoice {
     try {
       const buffer = item.audio ? await item.audio : null;
       if (item.gen === this.generation) {
+        this.currentText = item.text;
         if (buffer) await this.playBuffer(buffer);
         else await this.speakBrowser(item.text);
       }
     } finally {
+      this.currentText = "";
       this.busy = false;
       if (this.queue.length) this.pump();
       else this.onSpeakingChange(false);

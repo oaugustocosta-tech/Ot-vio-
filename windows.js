@@ -16,7 +16,10 @@ export function runPs(nome, args = [], timeout = 20_000) {
   });
 }
 
+// PowerShell de 32 bits, para componentes do Windows que só existem nessa versão.
+const PS32 = path.join(process.env.SystemRoot || "C:\\Windows", "SysWOW64", "WindowsPowerShell", "v1.0", "powershell.exe");
+
 // Deixa rodando (para o LED, que fica recebendo comandos).
-export function spawnPs(nome, args = []) {
-  return spawn("powershell.exe", ps(nome, args), { windowsHide: true });
+export function spawnPs(nome, args = [], { x86 = false } = {}) {
+  return spawn(x86 ? PS32 : "powershell.exe", ps(nome, args), { windowsHide: true });
 }

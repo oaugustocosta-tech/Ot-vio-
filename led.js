@@ -21,11 +21,24 @@ let proc = null;
 let ready = null;
 let waiting = [];
 
+// Alguns Armoury Crate só registram o Aura para programas de 32 bits: tenta os dois.
 function start() {
   if (process.platform !== "win32") return Promise.reject(new Error("O LED só funciona no Windows."));
   if (ready) return ready;
-  ready = new Promise((resolve, reject) => {
-    proc = spawnPs("aura.ps1");
+  ready = open(false).catch((err) => {
+    console.error(`  LED (64 bits): ${err.message}`);
+    return open(true);
+  });
+  ready.catch((err) => {
+    console.error(`  LED (32 bits): ${err.message}`);
+    ready = null;
+  });
+  return ready;
+}
+
+function open(x86) {
+  return new Promise((resolve, reject) => {
+    proc = spawnPs("aura.ps1", [], { x86 });
     let buf = "";
     let first = true;
     proc.stdout.on("data", (chunk) => {
@@ -37,24 +50,26 @@ function start() {
         if (first) {
           first = false;
           if (line === "PRONTO") resolve();
-          else reject(new Error("Não achei o Aura no Windows. Instale o Armoury Crate (com o Aura) e tente de novo."));
+          else reject(new Error(`Não achei o Aura no Windows (${line.replace(/^ERRO sdk\s*/, "") || "sem resposta"}). Confira se o Armoury Crate está instalado com o Aura Sync e se o serviço de iluminação está rodando.`));
         } else waiting.shift()?.(line);
       }
     });
-    proc.on("error", reject);
-    proc.on("exit", () => {
+    const me = proc;
+    me.on("error", reject);
+    me.on("exit", () => {
+      reject(new Error("O controle do LED fechou antes de começar."));
+      if (proc !== me) return;
       proc = null;
       ready = null;
       for (const w of waiting) w("ERRO o controle do LED fechou");
       waiting = [];
     });
     setTimeout(() => reject(new Error("O Aura demorou demais para responder.")), 15_000);
-  });
-  ready.catch(() => {
+  }).catch((err) => {
     proc?.kill();
-    ready = null;
+    proc = null;
+    throw err;
   });
-  return ready;
 }
 
 async function send(cmd) {
@@ -63,7 +78,11 @@ async function send(cmd) {
     waiting.push(resolve);
     proc.stdin.write(`${cmd}\n`);
   });
-  if (reply !== "OK") throw new Error(`LED: ${reply.replace(/^ERRO\s*/, "")}`);
+  if (reply === "ERRO nenhum") {
+    throw new Error("O Aura respondeu, mas não encontrou nenhuma luz. Abra o Armoury Crate e veja se ele mesmo consegue mudar a cor do gabinete; no Windows 11, desligue também a Iluminação Dinâmica (Configurações > Personalização > Iluminação dinâmica).");
+  }
+  if (!reply.startsWith("OK")) throw new Error(`LED: ${reply.replace(/^ERRO\s*/, "")}`);
+  return reply.split(" ").slice(1).map(Number);
 }
 
 // Aceita nome de cor ("azul") ou código ("#FF8800").
@@ -82,6 +101,7 @@ export async function setLed(acao, cor) {
   const hex = acao === "desligar" ? "000000" : parseCor(cor);
   // O Aura usa a ordem azul-verde-vermelho.
   const [r, g, b] = [0, 2, 4].map((i) => hex.slice(i, i + 2));
-  await send(`cor ${parseInt(b + g + r, 16)}`);
-  return acao === "desligar" ? "LED apagado." : `LED em ${cor}.`;
+  const [placas, luzes] = await send(`cor ${parseInt(b + g + r, 16)}`);
+  const onde = placas ? ` (${placas} aparelho${placas > 1 ? "s" : ""}, ${luzes} luzes)` : "";
+  return (acao === "desligar" ? "LED apagado" : `LED em ${cor}`) + `${onde}.`;
 }
