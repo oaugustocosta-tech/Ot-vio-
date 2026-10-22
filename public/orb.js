@@ -84,6 +84,7 @@ void main() {
 }`;
 
 const MODES = {
+  off: { energy: 0.12, speed: 0.08, brk: 0, core: 0.15 },
   sleep: { energy: 0.35, speed: 0.2, brk: 0, core: 0.4 },
   idle: { energy: 0.85, speed: 0.45, brk: 0, core: 0.85 },
   listening: { energy: 1.1, speed: 0.7, brk: 0.08, core: 1.1 },

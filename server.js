@@ -1,5 +1,6 @@
 import http from "node:http";
 import fs from "node:fs";
+import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chat, describeError, BRAIN_LABEL, BRAIN_SHORT, NAME } from "./brain.js";
@@ -114,7 +115,7 @@ async function handleTts(req, res) {
   } catch (err) {
     // O navegador cai para a voz dele quando recebe erro aqui.
     console.error("Voz:", err.message);
-    res.writeHead(502).end();
+    sendJson(res, 502, { error: err.message });
   }
 }
 
@@ -142,6 +143,21 @@ async function handleModes(req, res) {
     sendJson(res, 200, { modos: saveModes(modos, { fechaveis: new Set(Object.keys(FECHAVEIS)), conhecidos: new Set(Object.keys(PROGRAMAS)), instalados, cores: new Set(Object.keys(CORES)) }) });
   } catch (err) {
     sendJson(res, 400, { error: err.message });
+  }
+}
+
+// "Jarvis, desligar": fecha a janela dele no Edge (o perfil JarvisEdge) e encerra o servidor.
+function desligar() {
+  console.log("  Desligando a pedido do usuário.");
+  if (process.platform === "win32") {
+    const script =
+      "Get-CimInstance Win32_Process -Filter \"Name='msedge.exe'\" | Where-Object { $_.CommandLine -like '*JarvisEdge*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }";
+    const child = spawn("powershell.exe", ["-NoProfile", "-WindowStyle", "Hidden", "-Command", script], { windowsHide: true, stdio: "ignore" });
+    child.on("exit", () => process.exit(0));
+    child.on("error", () => process.exit(0));
+    setTimeout(() => process.exit(0), 8000);
+  } else {
+    setTimeout(() => process.exit(0), 300);
   }
 }
 
@@ -200,6 +216,10 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "POST" && req.url === "/api/chat") return await handleChat(req, res);
     if (req.method === "POST" && req.url === "/api/tts") return await handleTts(req, res);
+    if (req.method === "POST" && req.url === "/api/desligar") {
+      sendJson(res, 200, { ok: true });
+      return desligar();
+    }
     if (req.method === "POST" && req.url === "/api/rotina") {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ passos: rodarRotina() }));

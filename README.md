@@ -20,6 +20,8 @@ Pronto. Ao ligar o PC, ele abre em tela cheia, diz "Bom dia, senhor" e roda a su
 - **Diga "Jarvis"** e o pedido, numa frase só: "Jarvis, abre o YouTube". Ou só "Jarvis" (ou "ativar Jarvis"), espere o bipe e fale.
 - Depois que ele responde, você tem uns 20 segundos para continuar a conversa sem repetir o nome. Passado esse tempo, ou se você disser "obrigado, Jarvis" ou "pode descansar", ele volta a esperar o nome (bipe de descida).
 - Fora disso, ele ignora o que ouve: conversa no ambiente, TV, música.
+- **"Jarvis, desativar"** (ou "modo silencioso", "para de me ouvir"): ele para de reagir a tudo, até ao nome, e só volta quando você diz **"ativar Jarvis"** (ou clica no núcleo).
+- **"Jarvis, desligar"** (ou "fechar o Jarvis"): fecha a janela e o Jarvis de vez. Para abrir de novo, use o atalho.
 - **Minimizado ele continua ouvindo.** Só não feche a janela. "Jarvis, se esconde" minimiza; "Jarvis, aparece" traz de volta. **F11** sai da tela cheia.
 - **Clicar no reator** também chama. Clicar enquanto ele fala corta a fala.
 - **Chat** (canto superior direito): mostra a conversa escrita e um campo para digitar. Fica escondido por padrão.
@@ -53,7 +55,7 @@ Quando o Jarvis abre junto com o Windows, ele segue o arquivo `rotina.txt` da pa
 
 ## A voz
 
-Por padrão, o Jarvis fala com as vozes neurais da Microsoft (as mesmas do "Ler em voz alta" do Edge), que são grátis e soam humanas. Para trocar de voz, coloque `JARVIS_VOICE` no `.env` (por exemplo `pt-BR-FranciscaNeural`). Esse serviço não é oficial: se ele cair, o Jarvis usa a voz do navegador até voltar. Para uma voz ainda mais realista, coloque uma `ELEVENLABS_API_KEY`. O plano grátis da ElevenLabs dá uns 20 minutos de fala por mês; quando acabar, o Jarvis volta sozinho para a voz da Microsoft. A voz da ElevenLabs é escolhida com `JARVIS_VOZ`: `daniel` (britânico e sério, o padrão, o mais perto do mordomo do filme), `george`, `brian`, `alice` ou `lily` (estas duas femininas). O instalador pergunta qual você quer. No canto superior esquerdo da tela aparece qual cérebro e qual voz estão em uso.
+Por padrão, o Jarvis fala com as vozes neurais da Microsoft (as mesmas do "Ler em voz alta" do Edge), que são grátis e soam humanas. Para trocar de voz, coloque `JARVIS_VOICE` no `.env` (por exemplo `pt-BR-FranciscaNeural`). Esse serviço não é oficial: se ele cair, o Jarvis usa a voz do navegador até voltar. Para uma voz ainda mais realista, coloque uma `ELEVENLABS_API_KEY`. O plano grátis da ElevenLabs dá uns 20 minutos de fala por mês; quando acabar, o Jarvis volta sozinho para a voz da Microsoft. A voz da ElevenLabs é escolhida com `JARVIS_VOZ`: `daniel` (britânico e sério, o padrão, o mais perto do mordomo do filme), `george`, `brian`, `alice` ou `lily` (estas duas femininas). O instalador pergunta qual você quer. No canto superior esquerdo da tela aparece qual cérebro e qual voz estão em uso. Se a ElevenLabs recusar (chave sem permissão de Text to Speech, créditos acabados, conta bloqueada), o Jarvis mostra o motivo na tela e fala com a voz reserva.
 
 ## Microfone
 
