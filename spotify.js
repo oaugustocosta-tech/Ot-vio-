@@ -143,6 +143,11 @@ async function pickDevice(pedido) {
   return devices.find((d) => d.is_active) || devices.find((d) => d.type === "Computer") || devices[0];
 }
 
+// Para o diagnóstico: os aparelhos que o Spotify enxerga agora.
+export async function devices() {
+  return (await api("GET", "/me/player/devices"))?.devices || [];
+}
+
 const TIPOS = { musica: "track", artista: "artist", playlist: "playlist", album: "album" };
 
 export async function play({ busca, tipo = "musica", aparelho }) {

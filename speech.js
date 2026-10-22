@@ -5,6 +5,7 @@
 //    Não é uma API oficial.
 // Se nada funcionar, o servidor responde erro e o navegador fala com a voz dele.
 import { MsEdgeTTS, OUTPUT_FORMAT } from "msedge-tts";
+import { motivoRede } from "./rede.js";
 
 const ELEVEN_KEY = process.env.ELEVENLABS_API_KEY || "";
 // Vozes prontas da ElevenLabs no estilo do Jarvis. Escolha pelo nome com JARVIS_VOZ no .env,
@@ -25,18 +26,23 @@ const ELEVEN_MODEL = process.env.ELEVENLABS_MODEL || "eleven_flash_v2_5";
 // JARVIS_VOICE=navegador desliga a voz da Microsoft.
 const EDGE_VOICE = process.env.JARVIS_VOICE || "pt-BR-AntonioNeural";
 const EDGE_ON = EDGE_VOICE !== "navegador";
+// Azure Speech (Microsoft oficial): plano grátis F0 com 500 mil caracteres por mês (umas 9 horas de
+// fala), sem cair como o serviço não oficial. Pede AZURE_SPEECH_KEY e AZURE_SPEECH_REGION.
+const AZURE_KEY = process.env.AZURE_SPEECH_KEY || "";
+const AZURE_REGION = (process.env.AZURE_SPEECH_REGION || "brazilsouth").trim().toLowerCase();
+const AZURE_VOICE = process.env.AZURE_VOZ || "pt-BR-AntonioNeural";
 
-export const VOICE_LABEL = [ELEVEN_KEY && ELEVEN_NAME, EDGE_ON && `Microsoft ${EDGE_VOICE}`, "voz do navegador"]
+export const VOICE_LABEL = [ELEVEN_KEY && ELEVEN_NAME, AZURE_KEY && `Azure ${AZURE_VOICE}`, EDGE_ON && `Microsoft ${EDGE_VOICE}`, "voz do navegador"]
   .filter(Boolean)
   .join(" → ");
-export const SERVER_VOICE = Boolean(ELEVEN_KEY) || EDGE_ON;
+export const SERVER_VOICE = Boolean(ELEVEN_KEY || AZURE_KEY) || EDGE_ON;
 
 // Depois de uma falha, pula aquela voz por um tempo em vez de esperar ela falhar de novo.
-const downUntil = { eleven: 0, edge: 0 };
+const downUntil = { eleven: 0, azure: 0, edge: 0 };
 const isDown = (k) => Date.now() < downUntil[k];
 const markDown = (k, ms) => (downUntil[k] = Date.now() + ms);
 
-async function elevenLabs(text, tentativa = 0) {
+export async function elevenLabs(text, tentativa = 0) {
   let res;
   try {
     res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE}?output_format=mp3_44100_64`, {
@@ -51,9 +57,9 @@ async function elevenLabs(text, tentativa = 0) {
       signal: AbortSignal.timeout(10_000),
     });
   } catch (err) {
-    console.error(`  ElevenLabs: ${err.message}`);
+    console.error(`  ElevenLabs: ${motivoRede(err)}`);
     markDown("eleven", 15_000); // falha de rede costuma passar rápido
-    throw new Error("Não consegui falar com a ElevenLabs (internet lenta ou fora do ar).");
+    throw new Error(`Não consegui falar com a ElevenLabs: ${motivoRede(err)}.`);
   }
   if (!res.ok) {
     const body = await res.text();
@@ -91,11 +97,41 @@ function explainEleven(status, body) {
   return `A ElevenLabs respondeu com erro ${status}${code ? ` (${code})` : ""}.`;
 }
 
+export async function azureTts(text) {
+  const ssml = `<speak version="1.0" xml:lang="pt-BR"><voice name="${AZURE_VOICE}"><prosody rate="+8%">${escapeXml(text)}</prosody></voice></speak>`;
+  let res;
+  try {
+    res = await fetch(`https://${AZURE_REGION}.tts.speech.microsoft.com/cognitiveservices/v1`, {
+      method: "POST",
+      headers: {
+        "Ocp-Apim-Subscription-Key": AZURE_KEY,
+        "Content-Type": "application/ssml+xml",
+        "X-Microsoft-OutputFormat": "audio-24khz-96kbitrate-mono-mp3",
+        "User-Agent": "jarvis",
+      },
+      body: ssml,
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (err) {
+    console.error(`  Azure: ${motivoRede(err)}`);
+    markDown("azure", 15_000);
+    throw new Error(`Não consegui falar com a Azure: ${motivoRede(err)}.`);
+  }
+  if (!res.ok) {
+    console.error(`  Azure ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    markDown("azure", res.status === 401 || res.status === 403 ? 30 * 60_000 : 60_000);
+    if (res.status === 401) throw new Error("A Azure recusou a chave. Confira AZURE_SPEECH_KEY e a região (AZURE_SPEECH_REGION).");
+    if (res.status === 429) throw new Error("A Azure pediu para ir mais devagar (limite do plano grátis).");
+    throw new Error(`A Azure respondeu com erro ${res.status}.`);
+  }
+  return Buffer.from(await res.arrayBuffer());
+}
+
 let edge = null; // conexão reaproveitada entre frases
 
 const escapeXml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-async function edgeTts(text) {
+export async function edgeTts(text) {
   try {
     if (!edge) {
       const tts = new MsEdgeTTS();
@@ -118,8 +154,8 @@ async function edgeTts(text) {
     } catch {}
     edge = null;
     markDown("edge", 30_000);
-    console.error(`  Microsoft: ${err.message}`);
-    throw new Error("A voz grátis da Microsoft também não respondeu.");
+    console.error(`  Microsoft: ${motivoRede(err)}`);
+    throw new Error(`A voz grátis da Microsoft também não respondeu: ${motivoRede(err)}.`);
   }
 }
 
@@ -129,6 +165,13 @@ export async function synthesize(text) {
   if (ELEVEN_KEY && !isDown("eleven")) {
     try {
       return { audio: await elevenLabs(text), voice: ELEVEN_NAME };
+    } catch (err) {
+      errors.push(err.message);
+    }
+  }
+  if (AZURE_KEY && !isDown("azure")) {
+    try {
+      return { audio: await azureTts(text), voice: "Azure" };
     } catch (err) {
       errors.push(err.message);
     }

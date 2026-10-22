@@ -21,4 +21,6 @@ for (const nome of ARQUIVOS) {
   if (fs.existsSync(antigo) && !fs.existsSync(dado(nome))) fs.copyFileSync(antigo, dado(nome));
 }
 
+// O ambiente de antes do .env: ao reiniciar depois de trocar uma chave, o servidor novo lê o .env do zero.
+export const AMBIENTE_ORIGINAL = { ...process.env };
 if (fs.existsSync(dado(".env"))) process.loadEnvFile(dado(".env"));
