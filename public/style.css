@@ -220,3 +220,34 @@ button:focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; }
 .conn code { font-family: var(--mono); font-size: 11px; color: var(--ink); word-break: break-all; }
 .conn input { font: inherit; font-size: 13px; color: var(--ink); background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; flex: 1 1 140px; min-width: 0; }
 .conn .row button, .conn .addrow button { font-size: 12px; padding: 6px 12px; }
+
+/* --- Modo Ultron: tudo vermelho, mais forte e instável -------------------------------- */
+body.ultron {
+  --ink: #ffd6d0;
+  --muted: #c0605a;
+  --glow: #ff2a1a;
+  --glass: rgba(45, 4, 4, 0.6);
+  --line: rgba(255, 50, 40, 0.32);
+  background: radial-gradient(circle at 50% 45%, #2a0303 0%, #070000 62%) #070000;
+}
+body.ultron .brand { text-shadow: 0 0 14px rgba(255, 30, 20, 0.85), 0 0 34px rgba(255, 0, 0, 0.45); letter-spacing: 0.55em; }
+body.ultron::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 45%, transparent 45%, rgba(120, 0, 0, 0.55) 100%);
+  animation: ultronPulse 2.4s ease-in-out infinite;
+  z-index: 1;
+}
+@keyframes ultronPulse { 50% { opacity: 0.55; } }
+body.shake { animation: shake 0.6s cubic-bezier(.36,.07,.19,.97); }
+@keyframes shake {
+  10%, 90% { transform: translate(-2px, 1px); }
+  20%, 80% { transform: translate(4px, -2px); }
+  30%, 50%, 70% { transform: translate(-6px, 3px); }
+  40%, 60% { transform: translate(6px, -3px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  body.shake, body.ultron::after { animation: none; }
+}

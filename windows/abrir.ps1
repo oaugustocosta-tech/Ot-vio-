@@ -29,10 +29,10 @@ if ($net -and $net.ProxyEnable -eq 1 -and $net.ProxyServer) {
   $env:NODE_USE_ENV_PROXY = '1'
 }
 
-# Atualiza sozinho se tiver versao nova no GitHub (no maximo 2 minutos; sem internet, segue).
+# Atualiza sozinho se tiver versao nova no GitHub (no maximo 3 minutos; sem internet, segue).
 $atualizar = Start-Process node -ArgumentList ($opcoesNode + 'atualizar.js') -WorkingDirectory $pasta -WindowStyle Hidden -PassThru `
   -RedirectStandardOutput (Join-Path $pasta 'atualizacao.log') -RedirectStandardError (Join-Path $pasta 'atualizacao-erros.log')
-if (-not $atualizar.WaitForExit(120000)) { Stop-Process -Id $atualizar.Id -Force -ErrorAction SilentlyContinue }
+if (-not $atualizar.WaitForExit(180000)) { Stop-Process -Id $atualizar.Id -Force -ErrorAction SilentlyContinue }
 
 Start-Process node -ArgumentList ($opcoesNode + 'server.js', '--jarvis') -WorkingDirectory $pasta -WindowStyle Hidden `
   -RedirectStandardOutput (Join-Path $pasta 'jarvis.log') -RedirectStandardError (Join-Path $pasta 'jarvis-erros.log')

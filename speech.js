@@ -4,8 +4,12 @@
 // 2. Vozes neurais da Microsoft (as do "Ler em voz alta" do Edge), grátis, sem chave.
 //    Não é uma API oficial.
 // Se nada funcionar, o servidor responde erro e o navegador fala com a voz dele.
+import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
 import { MsEdgeTTS, OUTPUT_FORMAT } from "msedge-tts";
 import { motivoRede } from "./rede.js";
+import { dado } from "./dados.js";
 
 const ELEVEN_KEY = process.env.ELEVENLABS_API_KEY || "";
 // Vozes prontas da ElevenLabs no estilo do Jarvis. Escolha pelo nome com JARVIS_VOZ no .env,
@@ -37,22 +41,30 @@ export const VOICE_LABEL = [ELEVEN_KEY && ELEVEN_NAME, AZURE_KEY && `Azure ${AZU
   .join(" → ");
 export const SERVER_VOICE = Boolean(ELEVEN_KEY || AZURE_KEY) || EDGE_ON;
 
+// Modo Ultron: outra voz da ElevenLabs (grave e rouca) e as vozes da Microsoft mais graves.
+// No navegador ainda passa por um efeito metálico (voice.js).
+const ULTRON_VOICE = process.env.ULTRON_VOICE_ID || "N2lVS1w4EtoT3dr4eOWO"; // Callum: intensa, rouca
+const PERSONAS = {
+  jarvis: { eleven: ELEVEN_VOICE, settings: { stability: 0.6, similarity_boost: 0.8, speed: 1.05 }, pitch: "+0%" },
+  ultron: { eleven: ULTRON_VOICE, settings: { stability: 0.35, similarity_boost: 0.85, style: 0.4, speed: 1.0 }, pitch: "-18%" },
+};
+
 // Depois de uma falha, pula aquela voz por um tempo em vez de esperar ela falhar de novo.
 const downUntil = { eleven: 0, azure: 0, edge: 0 };
 const isDown = (k) => Date.now() < downUntil[k];
 const markDown = (k, ms) => (downUntil[k] = Date.now() + ms);
 
-export async function elevenLabs(text, tentativa = 0) {
+export async function elevenLabs(text, tentativa = 0, persona = PERSONAS.jarvis) {
   let res;
   try {
-    res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE}?output_format=mp3_44100_64`, {
+    res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${persona.eleven}?output_format=mp3_44100_64`, {
       method: "POST",
       headers: { "xi-api-key": ELEVEN_KEY, "Content-Type": "application/json", Accept: "audio/mpeg" },
       body: JSON.stringify({
         text,
         model_id: ELEVEN_MODEL,
         language_code: "pt",
-        voice_settings: { stability: 0.6, similarity_boost: 0.8, speed: 1.05 },
+        voice_settings: persona.settings,
       }),
       signal: AbortSignal.timeout(10_000),
     });
@@ -67,7 +79,7 @@ export async function elevenLabs(text, tentativa = 0) {
     // pouquinho e tenta de novo, em vez de trocar de voz no meio da resposta.
     if (res.status === 429 && !/quota/i.test(body) && tentativa < 3) {
       await new Promise((r) => setTimeout(r, 350 * (tentativa + 1)));
-      return elevenLabs(text, tentativa + 1);
+      return elevenLabs(text, tentativa + 1, persona);
     }
     console.error(`  ElevenLabs ${res.status}: ${body.slice(0, 300)}`);
     // Sem créditos ou chave inválida: não adianta tentar de novo tão cedo.
@@ -99,8 +111,8 @@ function explainEleven(status, body) {
   return `A ElevenLabs respondeu com erro ${status}${code ? ` (${code})` : ""}.`;
 }
 
-export async function azureTts(text) {
-  const ssml = `<speak version="1.0" xml:lang="pt-BR"><voice name="${AZURE_VOICE}"><prosody rate="+8%">${escapeXml(text)}</prosody></voice></speak>`;
+export async function azureTts(text, persona = PERSONAS.jarvis) {
+  const ssml = `<speak version="1.0" xml:lang="pt-BR"><voice name="${AZURE_VOICE}"><prosody rate="+8%" pitch="${persona.pitch}">${escapeXml(text)}</prosody></voice></speak>`;
   let res;
   try {
     res = await fetch(`https://${AZURE_REGION}.tts.speech.microsoft.com/cognitiveservices/v1`, {
@@ -133,17 +145,17 @@ let edge = null; // conexão reaproveitada entre frases
 
 const escapeXml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-export async function edgeTts(text) {
+export async function edgeTts(text, persona = PERSONAS.jarvis) {
   try {
     if (!edge) {
       const tts = new MsEdgeTTS();
       await tts.setMetadata(EDGE_VOICE, OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3);
       edge = tts;
     }
-    const { audioStream } = edge.toStream(escapeXml(text), { rate: "+8%" });
+    const { audioStream } = edge.toStream(escapeXml(text), { rate: "+8%", pitch: persona.pitch });
     const chunks = [];
     await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("tempo esgotado")), 5_000);
+      const timer = setTimeout(() => reject(new Error("tempo esgotado")), 10_000);
       audioStream.on("data", (c) => chunks.push(c));
       audioStream.on("end", () => (clearTimeout(timer), resolve()));
       audioStream.on("error", (e) => (clearTimeout(timer), reject(e)));
@@ -155,32 +167,79 @@ export async function edgeTts(text) {
       edge?.close();
     } catch {}
     edge = null;
-    markDown("edge", 30_000);
+    // 429: a Microsoft pediu um tempo (muitos pedidos). Insistir só piora.
+    markDown("edge", /429/.test(err?.message) ? 3 * 60_000 : 30_000);
     console.error(`  Microsoft: ${motivoRede(err)}`);
     throw new Error(`A voz grátis da Microsoft também não respondeu: ${motivoRede(err)}.`);
   }
 }
 
-export async function synthesize(text) {
+// Frases curtas que se repetem ("Feito, senhor.") ficam guardadas no disco: saem na hora, sem
+// internet e sem gastar créditos. Só guarda a voz principal, para a voz não variar.
+const CACHE = dado("voz-cache");
+fs.mkdirSync(CACHE, { recursive: true });
+const PRINCIPAL = ELEVEN_KEY ? "eleven" : AZURE_KEY ? "azure" : "edge";
+
+function chaveCache(text, persona) {
+  const voz = PRINCIPAL === "eleven" ? persona.eleven + ELEVEN_MODEL : PRINCIPAL === "azure" ? AZURE_VOICE : EDGE_VOICE;
+  return path.join(CACHE, `${crypto.createHash("sha1").update(`${PRINCIPAL}|${voz}|${persona.pitch}|${text}`).digest("hex")}.mp3`);
+}
+
+function lerCache(text, persona) {
+  if (text.length > 160) return null;
+  try {
+    return fs.readFileSync(chaveCache(text, persona));
+  } catch {
+    return null;
+  }
+}
+
+function guardarCache(text, persona, audio) {
+  if (text.length > 160) return;
+  try {
+    fs.writeFileSync(chaveCache(text, persona), audio);
+    const arquivos = fs.readdirSync(CACHE);
+    // No máximo umas 500 frases: apaga as mais antigas.
+    if (arquivos.length > 500) {
+      arquivos
+        .map((f) => ({ f, t: fs.statSync(path.join(CACHE, f)).mtimeMs }))
+        .sort((a, b) => a.t - b.t)
+        .slice(0, 100)
+        .forEach(({ f }) => fs.rmSync(path.join(CACHE, f), { force: true }));
+    }
+  } catch {}
+}
+
+export async function synthesize(text, nomePersona = "jarvis") {
   text = text.slice(0, 2000);
+  const persona = PERSONAS[nomePersona] || PERSONAS.jarvis;
+  const nomeVoz = PRINCIPAL === "eleven" ? ELEVEN_NAME : PRINCIPAL === "azure" ? "Azure" : "Microsoft";
+  const salvo = lerCache(text, persona);
+  if (salvo) return { audio: salvo, voice: nomeVoz };
   const errors = [];
   if (ELEVEN_KEY && !isDown("eleven")) {
     try {
-      return { audio: await elevenLabs(text), voice: ELEVEN_NAME };
+      const audio = await elevenLabs(text, 0, persona);
+      guardarCache(text, persona, audio);
+      return { audio, voice: ELEVEN_NAME };
     } catch (err) {
       errors.push(err.message);
     }
   }
   if (AZURE_KEY && !isDown("azure")) {
     try {
-      return { audio: await azureTts(text), voice: "Azure" };
+      const audio = await azureTts(text, persona);
+      if (PRINCIPAL === "azure") guardarCache(text, persona, audio);
+      return { audio, voice: "Azure" };
     } catch (err) {
       errors.push(err.message);
     }
   }
   if (EDGE_ON && !isDown("edge")) {
     try {
-      return { audio: await edgeTts(text), voice: "Microsoft" };
+      const audio = await edgeTts(text, persona);
+      if (PRINCIPAL === "edge") guardarCache(text, persona, audio);
+      return { audio, voice: "Microsoft" };
     } catch (err) {
       errors.push(err.message);
     }

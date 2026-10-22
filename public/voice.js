@@ -27,6 +27,7 @@ export class JarvisVoice {
     this.inflight = 0; // pedidos de áudio em andamento
     this.waiters = [];
     this.currentText = ""; // frase que está tocando agora (para ele não obedecer à própria voz)
+    this.persona = "jarvis"; // "ultron" troca a voz e liga o efeito metálico
   }
 
   async init() {
@@ -43,6 +44,7 @@ export class JarvisVoice {
     this.input.connect(comp);
     comp.connect(this.analyser);
     this.analyser.connect(ctx.destination);
+    this.buildUltronFx();
     this.keepAwake();
 
     try {
@@ -51,6 +53,7 @@ export class JarvisVoice {
       this.userName = cfg.name;
       this.brainName = cfg.brain;
       this.updated = cfg.atualizado;
+      this.version = cfg.versao;
     } catch {
       this.neural = false;
     }
@@ -73,6 +76,72 @@ export class JarvisVoice {
     src.loop = true;
     src.connect(ctx.destination);
     src.start();
+  }
+
+  // Efeito da voz do Ultron: graves reforçados, um eco curtíssimo que dá timbre metálico
+  // (como voz saindo de uma armadura) e uma distorção leve. Tudo no computador, sem custo.
+  buildUltronFx() {
+    const ctx = this.ctx;
+    this.fx = ctx.createGain();
+    const low = ctx.createBiquadFilter();
+    low.type = "lowshelf";
+    low.frequency.value = 180;
+    low.gain.value = 6;
+    const shaper = ctx.createWaveShaper();
+    const curve = new Float32Array(1024);
+    for (let i = 0; i < curve.length; i++) {
+      const x = (i / (curve.length - 1)) * 2 - 1;
+      curve[i] = Math.tanh(x * 1.8) / Math.tanh(1.8);
+    }
+    shaper.curve = curve;
+    const dry = ctx.createGain();
+    dry.gain.value = 0.8;
+    const comb = ctx.createDelay(0.05);
+    comb.delayTime.value = 0.011;
+    const fb = ctx.createGain();
+    fb.gain.value = 0.38;
+    const wet = ctx.createGain();
+    wet.gain.value = 0.45;
+    this.fx.connect(low);
+    low.connect(shaper);
+    shaper.connect(dry);
+    shaper.connect(comb);
+    comb.connect(fb);
+    fb.connect(comb);
+    comb.connect(wet);
+    dry.connect(this.input);
+    wet.connect(this.input);
+  }
+
+  // Som de transformação: um grave subindo (Ultron) ou descendo (volta ao Jarvis).
+  surge(on) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const sub = ctx.createOscillator();
+    const g = ctx.createGain();
+    const lp = ctx.createBiquadFilter();
+    osc.type = "sawtooth";
+    sub.type = "sine";
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(on ? 200 : 1400, t);
+    lp.frequency.exponentialRampToValueAtTime(on ? 2400 : 160, t + 1.1);
+    osc.frequency.setValueAtTime(on ? 38 : 120, t);
+    osc.frequency.exponentialRampToValueAtTime(on ? 110 : 40, t + 1.1);
+    sub.frequency.setValueAtTime(on ? 30 : 60, t);
+    sub.frequency.exponentialRampToValueAtTime(on ? 55 : 28, t + 1.1);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.35, t + 0.25);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
+    osc.connect(lp);
+    sub.connect(lp);
+    lp.connect(g);
+    g.connect(this.input);
+    for (const o of [osc, sub]) {
+      o.start(t);
+      o.stop(t + 1.5);
+    }
   }
 
   // Por onde sai a voz (soundbar, headset...). Vazio = a saída padrão do Windows.
@@ -118,9 +187,9 @@ export class JarvisVoice {
   say(text) {
     const clean = text.replace(/[*_#`~>\[\]]/g, "").trim();
     if (!clean) return;
-    const item = { text: clean, gen: this.generation };
+    const item = { text: clean, gen: this.generation, persona: this.persona };
     // Já pede o áudio neural enquanto a frase anterior ainda está tocando.
-    if (this.neural) item.audio = this.fetchNeural(clean, item.gen);
+    if (this.neural) item.audio = this.fetchNeural(clean, item.gen, item.persona);
     this.queue.push(item);
     this.pump();
   }
@@ -138,25 +207,25 @@ export class JarvisVoice {
     else this.inflight--;
   }
 
-  async fetchNeural(text, gen) {
+  async fetchNeural(text, gen, persona) {
     await this.slot();
     try {
       // Cortado enquanto esperava a vez: nem pede.
       if (gen !== this.generation) return null;
-      return await this.requestNeural(text);
+      return await this.requestNeural(text, persona);
     } finally {
       this.release();
     }
   }
 
-  async requestNeural(text) {
+  async requestNeural(text, persona = "jarvis") {
     // Se a voz do servidor acabou de falhar, nem tenta: fala na hora com a do navegador.
     if (Date.now() < this.serverDownUntil) return null;
     try {
       const r = await fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, persona }),
       });
       if (!r.ok) {
         const why = (await r.json().catch(() => ({}))).error;
@@ -187,8 +256,8 @@ export class JarvisVoice {
       const buffer = item.audio ? await item.audio : null;
       if (item.gen === this.generation) {
         this.currentText = item.text;
-        if (buffer) await this.playBuffer(buffer);
-        else await this.speakBrowser(item.text);
+        if (buffer) await this.playBuffer(buffer, item.persona === "ultron");
+        else await this.speakBrowser(item.text, item.persona === "ultron");
       }
     } finally {
       this.currentText = "";
@@ -198,19 +267,21 @@ export class JarvisVoice {
     }
   }
 
-  playBuffer(buffer) {
+  playBuffer(buffer, ultron = false) {
     this.mode = "neural";
     return new Promise((resolve) => {
       const src = this.ctx.createBufferSource();
       src.buffer = buffer;
-      src.connect(this.input);
+      // Ultron: um pouco mais lento e grave, passando pelo efeito metálico.
+      if (ultron) src.playbackRate.value = 0.93;
+      src.connect(ultron ? this.fx : this.input);
       src.onended = resolve;
       this.current = src;
       src.start();
     });
   }
 
-  speakBrowser(text) {
+  speakBrowser(text, ultron = false) {
     this.mode = "browser";
     this.setVoiceName("navegador");
     if (!("speechSynthesis" in window)) return Promise.resolve();
@@ -218,8 +289,8 @@ export class JarvisVoice {
       const u = new SpeechSynthesisUtterance(text);
       u.lang = this.browserVoice?.lang || "pt-BR";
       if (this.browserVoice) u.voice = this.browserVoice;
-      u.pitch = 1;
-      u.rate = 1.05;
+      u.pitch = ultron ? 0.55 : 1;
+      u.rate = ultron ? 0.95 : 1.05;
       u.volume = 1;
       u.onboundary = () => (this.simLevel = 0.9);
       let finished = false;

@@ -15,6 +15,7 @@ import { CORES } from "./led.js";
 import * as spotify from "./spotify.js";
 import { diagnostico } from "./diagnostico.js";
 import { lerChaves, salvarChaves, reiniciar } from "./chaves.js";
+import { versaoLocal } from "./atualizar.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
@@ -69,7 +70,7 @@ function sanitizeHistory(messages) {
 }
 
 async function handleChat(req, res) {
-  const { messages } = await readJson(req);
+  const { messages, persona } = await readJson(req);
   const history = sanitizeHistory(messages);
   if (!history.length || history.at(-1).role !== "user") {
     res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "Mensagem vazia" }));
@@ -90,7 +91,7 @@ async function handleChat(req, res) {
   });
 
   try {
-    await chat(history, send, controller.signal);
+    await chat(history, send, controller.signal, persona === "ultron" ? "ultron" : "jarvis");
     send("done", {});
   } catch (err) {
     if (!controller.signal.aborted) {
@@ -107,13 +108,13 @@ async function handleTts(req, res) {
     res.writeHead(404).end();
     return;
   }
-  const { text } = await readJson(req, 20_000);
+  const { text, persona } = await readJson(req, 20_000);
   if (typeof text !== "string" || !text.trim()) {
     res.writeHead(400).end();
     return;
   }
   try {
-    const { audio, voice } = await synthesize(text);
+    const { audio, voice } = await synthesize(text, persona === "ultron" ? "ultron" : "jarvis");
     res.writeHead(200, { "Content-Type": "audio/mpeg", "X-Jarvis-Voice": voice });
     res.end(audio);
   } catch (err) {
@@ -265,7 +266,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (req.method === "GET" && req.url === "/api/config") {
-      return sendJson(res, 200, { neuralVoice: SERVER_VOICE, brain: BRAIN_SHORT, name: NAME, atualizado: novidade() });
+      return sendJson(res, 200, { neuralVoice: SERVER_VOICE, brain: BRAIN_SHORT, name: NAME, atualizado: novidade(), versao: versaoLocal().slice(0, 7) });
     }
     if (req.method === "GET") return serveStatic(req, res);
     res.writeHead(405).end();
