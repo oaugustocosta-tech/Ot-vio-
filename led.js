@@ -1,8 +1,8 @@
 // LED do PC pelo ASUS Aura (o serviço de iluminação que vem com o Armoury Crate).
 // Usa o "Aura SDK" que o próprio serviço registra no Windows (objeto COM aura.sdk.1).
-// Um PowerShell fica aberto em segundo plano segurando o controle das luzes: quando o Jarvis
+// O windows/aura.ps1 fica aberto em segundo plano segurando o controle das luzes: quando o Jarvis
 // "devolve", o Armoury Crate volta ao efeito que estava configurado nele.
-import { spawn } from "node:child_process";
+import { spawnPs } from "./windows.js";
 
 export const CORES = {
   vermelho: "FF0000",
@@ -17,28 +17,6 @@ export const CORES = {
   desligado: "000000",
 };
 
-const SCRIPT = `
-try { $sdk = New-Object -ComObject aura.sdk.1 } catch { [Console]::Out.WriteLine('ERRO sdk'); exit 1 }
-[Console]::Out.WriteLine('PRONTO')
-$ativo = $false
-while ($true) {
-  $linha = [Console]::In.ReadLine()
-  if ($linha -eq $null) { break }
-  try {
-    $p = $linha.Split(' ')
-    if ($p[0] -eq 'soltar') {
-      if ($ativo) { $sdk.ReleaseControl(0); $ativo = $false }
-    } else {
-      if (-not $ativo) { $sdk.SwitchMode(); $ativo = $true }
-      $cor = [uint32]$p[1]
-      foreach ($dev in $sdk.Enumerate(0)) { foreach ($luz in $dev.Lights) { $luz.Color = $cor }; $dev.Apply() }
-    }
-    [Console]::Out.WriteLine('OK')
-  } catch { [Console]::Out.WriteLine('ERRO ' + $_.Exception.Message) }
-}
-if ($ativo) { $sdk.ReleaseControl(0) }
-`;
-
 let proc = null;
 let ready = null;
 let waiting = [];
@@ -47,8 +25,7 @@ function start() {
   if (process.platform !== "win32") return Promise.reject(new Error("O LED só funciona no Windows."));
   if (ready) return ready;
   ready = new Promise((resolve, reject) => {
-    const encoded = Buffer.from(SCRIPT, "utf16le").toString("base64");
-    proc = spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded], { windowsHide: true });
+    proc = spawnPs("aura.ps1");
     let buf = "";
     let first = true;
     proc.stdout.on("data", (chunk) => {

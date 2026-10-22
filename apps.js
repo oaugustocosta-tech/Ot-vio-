@@ -1,6 +1,7 @@
 // Programas instalados no Windows, do jeito que aparecem no menu Iniciar (Get-StartApps).
 // Cobre programas comuns e os da Microsoft Store. Cada um tem um nome e um AppID que abre ele.
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
+import { runPs } from "./windows.js";
 
 const WINDOWS = process.platform === "win32";
 let cache = null;
@@ -9,7 +10,7 @@ let cacheAt = 0;
 export const normalize = (s) =>
   String(s || "")
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
@@ -17,24 +18,17 @@ export const normalize = (s) =>
 export function listStartApps() {
   if (!WINDOWS) return Promise.resolve([]);
   if (cache && Date.now() - cacheAt < 10 * 60_000) return Promise.resolve(cache);
-  const script =
-    "[Console]::OutputEncoding = [Text.Encoding]::UTF8; @(Get-StartApps | Select-Object Name, AppID) | ConvertTo-Json -Compress";
-  return new Promise((resolve) => {
-    execFile("powershell.exe", ["-NoProfile", "-Command", script], { windowsHide: true, timeout: 20_000, maxBuffer: 8 << 20 }, (err, out) => {
-      if (err) return resolve(cache || []);
-      try {
-        const list = JSON.parse(out || "[]");
-        cache = (Array.isArray(list) ? list : [list])
-          .filter((a) => a?.Name && a?.AppID && !/uninstall|desinstal/i.test(a.Name))
-          .map((a) => ({ name: a.Name, id: a.AppID }))
-          .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
-        cacheAt = Date.now();
-        resolve(cache);
-      } catch {
-        resolve(cache || []);
-      }
-    });
-  });
+  return runPs("apps.ps1")
+    .then((out) => {
+      const list = JSON.parse(out || "[]");
+      cache = (Array.isArray(list) ? list : [list])
+        .filter((a) => a?.Name && a?.AppID && !/uninstall|desinstal/i.test(a.Name))
+        .map((a) => ({ name: a.Name, id: a.AppID }))
+        .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+      cacheAt = Date.now();
+      return cache;
+    })
+    .catch(() => cache || []);
 }
 
 // Acha um programa pelo nome falado: igual, começa com, contém, ou tem todas as palavras.

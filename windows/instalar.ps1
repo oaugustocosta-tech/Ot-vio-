@@ -102,12 +102,17 @@ foreach ($antigo in @(
   (Join-Path ([Environment]::GetFolderPath("Desktop")) "Ultron.lnk"),
   (Join-Path ([Environment]::GetFolderPath("Startup")) "Ultron.lnk")
 )) { if (Test-Path $antigo) { Remove-Item $antigo } }
-$abrir = Join-Path $pasta "Jarvis.vbs"
+# Versões antigas abriam por um arquivo .vbs, que alguns antivírus estranham. Agora é um .ps1.
+$vbsAntigo = Join-Path $pasta "Jarvis.vbs"
+if (Test-Path $vbsAntigo) { Remove-Item $vbsAntigo -ErrorAction SilentlyContinue }
+$abrir = Join-Path $pasta "windows\abrir.ps1"
+$powershell = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
 $wsh = New-Object -ComObject WScript.Shell
 function Atalho($destino, $extra = "") {
   $lnk = $wsh.CreateShortcut($destino)
-  $lnk.TargetPath = "$env:SystemRoot\System32\wscript.exe"
-  $lnk.Arguments = ('"' + $abrir + '" ' + $extra).Trim()
+  $lnk.TargetPath = $powershell
+  $lnk.Arguments = ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $abrir + '" ' + $extra).Trim()
+  $lnk.WindowStyle = 7 # minimizado: a janela preta nem aparece
   $lnk.WorkingDirectory = $pasta
   $lnk.IconLocation = "$env:SystemRoot\System32\shell32.dll,43"
   $lnk.Save()
@@ -118,7 +123,7 @@ Write-Host "`nCriei um atalho 'Jarvis' na sua Área de Trabalho." -ForegroundCol
 $resposta = Read-Host "`nQuer que o Jarvis abra sozinho toda vez que você ligar o computador? (S/N)"
 $inicio = Join-Path ([Environment]::GetFolderPath("Startup")) "Jarvis.lnk"
 if ($resposta -match '^[sS]') {
-  Atalho $inicio "inicio"
+  Atalho $inicio "-Inicio"
   Write-Host "Feito. Ele abre em tela cheia e roda a rotina (o arquivo rotina.txt nesta pasta)." -ForegroundColor Green
   Write-Host "Para desligar isso depois, rode o instalador de novo e responda N." -ForegroundColor Green
 } elseif (Test-Path $inicio) {
@@ -129,5 +134,5 @@ if ($resposta -match '^[sS]') {
 Write-Host "`nTudo pronto! Abrindo o Jarvis..." -ForegroundColor Cyan
 Write-Host "Na primeira vez, o Edge vai pedir para usar o microfone: clique em Permitir."
 Write-Host "Depois do bom-dia, é só dizer 'Jarvis' e o pedido. F11 sai da tela cheia; minimizado ele continua ouvindo."
-Start-Process "$env:SystemRoot\System32\wscript.exe" -ArgumentList ('"' + $abrir + '"')
+Start-Process $powershell -WindowStyle Hidden -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -File "' + $abrir + '"')
 Sair 0
