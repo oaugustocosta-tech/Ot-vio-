@@ -25,9 +25,15 @@ Pronto. Ao ligar o PC, ele abre em tela cheia, diz "Bom dia, senhor" e roda a su
 - **Chat** (canto superior direito): mostra a conversa escrita e um campo para digitar. Fica escondido por padrão.
 - Exemplos: "abre o YouTube", "fecha o Discord", "abre o Telegram", "pesquisa a previsão do tempo de amanhã", "aumenta o volume", "pausa a música", "bloqueia o computador".
 
+## Modos (trabalho, game...)
+
+No botão **Modos** (canto superior direito) você cria seus próprios modos sem programar: dê um nome (por exemplo `trabalho`), adicione o que ele deve fazer (abrir um site, abrir qualquer programa instalado, fechar um programa) e clique em **Salvar modo**. Depois é só dizer "Jarvis, modo trabalho". O botão **Testar** roda o modo na hora. Os modos ficam salvos no arquivo `modos.json` da pasta e não se perdem quando você atualiza o Jarvis.
+
+Ele também abre qualquer programa do menu Iniciar pelo nome: "Jarvis, abre o Photoshop".
+
 ## A rotina de quando o PC liga
 
-Quando o Jarvis abre junto com o Windows, ele segue o arquivo `rotina.txt` da pasta dele (criado na primeira vez a partir do `rotina.exemplo.txt`). Abra no Bloco de Notas: cada linha é uma ação, como `fechar discord`, `abrir youtube.com` ou `abrir whatsapp`. Linhas com `#` no começo ficam desligadas. Por padrão ele só fecha o Discord.
+Quando o Jarvis abre junto com o Windows, ele segue o arquivo `rotina.txt` da pasta dele (criado na primeira vez a partir do `rotina.exemplo.txt`). Abra no Bloco de Notas: cada linha é uma ação, como `fechar discord`, `abrir youtube.com`, `abrir whatsapp` ou `modo trabalho`. Linhas com `#` no começo ficam desligadas. Por padrão ele só fecha o Discord.
 
 ## O cérebro
 
@@ -59,9 +65,12 @@ brain.js          cérebro (Claude, Groq ou Gemini), personalidade e o laço de 
 speech.js         voz gerada no servidor (Microsoft neural grátis ou ElevenLabs)
 tools.js          ações no computador; para incluir um programa, edite PROGRAMAS e FECHAVEIS
 rotina.js         rotina de quando o PC liga (lê rotina.txt)
+modos.js          modos criados na tela Modos (salvos em modos.json)
+apps.js           programas instalados no Windows (menu Iniciar)
 public/orb.js     interface holográfica 3D animada (WebGL puro, sem dependências)
 public/voice.js   toca a voz (do servidor ou do navegador) e mede o volume para a orbe
 public/app.js     conversa: palavra "Jarvis", microfone, streaming, chat, estados, início automático
+public/modos.js   tela Modos
 Jarvis.vbs        abre o servidor escondido e a janela do Jarvis no Edge (Windows)
 windows/          instalador para Windows
 ```

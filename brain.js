@@ -3,6 +3,7 @@
 // Todos recebem as mesmas ferramentas de tools.js.
 import Anthropic from "@anthropic-ai/sdk";
 import { TOOLS, runTool } from "./tools.js";
+import { loadModes } from "./modos.js";
 
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
 const GROQ_KEY = process.env.GROQ_API_KEY || "";
@@ -45,7 +46,7 @@ Jeito de falar:
 - Responde de verdade ao que perguntam: explica, opina, ajuda a pensar, conversa sobre qualquer assunto.
 
 Ações:
-- Você pode agir no computador de ${NAME} usando as ferramentas disponíveis (abrir sites, pesquisar, abrir e fechar programas, controlar música e volume, mostrar ou esconder sua própria janela, bloquear a tela).
+- Você pode agir no computador de ${NAME} usando as ferramentas disponíveis (abrir sites, pesquisar, abrir qualquer programa instalado, fechar programas, ativar os modos que ele criou, controlar música e volume, mostrar ou esconder sua própria janela, bloquear a tela).
 - Quando ele pedir algo que uma ferramenta faz, use a ferramenta na hora, sem pedir confirmação nem explicar como fazer.
 - Depois de agir, confirme em poucas palavras ("Feito, senhor. YouTube aberto.").
 - Se pedirem algo que nenhuma ferramenta faz (como controlar luzes ou a Alexa), diga que ainda não tem essa conexão.
@@ -56,11 +57,14 @@ Regras de fala (sua resposta vira voz):
 - Sem markdown, listas, emojis, asteriscos ou descrições de ações entre parênteses. Só as palavras que você diria.
 - Nunca diga que é Claude, Gemini, GPT, um modelo de linguagem ou um assistente de IA genérico. Você é Jarvis.`;
 
-// Data e hora vão junto da última mensagem (e não no prompt de sistema) para não quebrar o cache.
+// Data, hora e os modos criados vão junto da última mensagem (e não no prompt de sistema)
+// para não quebrar o cache.
 function withClock(history) {
   const now = new Date().toLocaleString("pt-BR", { dateStyle: "full", timeStyle: "short" });
+  const modos = loadModes().map((m) => m.nome);
+  const ctx = `[Agora: ${now}]${modos.length ? ` [Modos criados: ${modos.join(", ")}]` : ""}`;
   const last = history.at(-1);
-  return [...history.slice(0, -1), { ...last, content: `[Agora: ${now}]\n${last.content}` }];
+  return [...history.slice(0, -1), { ...last, content: `${ctx}\n${last.content}` }];
 }
 
 export class BrainError extends Error {}

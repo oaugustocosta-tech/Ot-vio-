@@ -20,12 +20,41 @@
       <div class="status"><i id="statusDot"></i><span id="statusText">offline</span></div>
     </header>
 
-    <button id="chatToggle" class="ghost" aria-pressed="false" title="Mostrar a conversa escrita">Chat</button>
+    <nav class="panels">
+      <button id="modesToggle" class="ghost" aria-pressed="false" title="Criar modos como trabalho e game">Modos</button>
+      <button id="chatToggle" class="ghost" aria-pressed="false" title="Mostrar a conversa escrita">Chat</button>
+    </nav>
     <aside class="chatbox" aria-label="Conversa escrita">
       <div id="log" class="log"></div>
       <form id="composer" class="composer">
         <input id="text" autocomplete="off" placeholder="Digite para o Jarvis…" />
         <button type="submit" class="send">Enviar</button>
+      </form>
+    </aside>
+
+    <aside class="modesbox" aria-label="Modos">
+      <h2>Modos</h2>
+      <p class="hint">Junte sites e programas num modo e diga, por exemplo, "Jarvis, modo trabalho".</p>
+      <div id="modeList"></div>
+      <form id="modeForm" class="modeform">
+        <input id="modeName" maxlength="40" autocomplete="off" placeholder="Nome do modo (ex.: trabalho, game)" />
+        <div id="draft"></div>
+        <div class="addrow">
+          <select id="actType" aria-label="Tipo de ação">
+            <option value="site">Abrir site</option>
+            <option value="app">Abrir programa</option>
+            <option value="fechar">Fechar programa</option>
+          </select>
+          <input id="actTarget" autocomplete="off" aria-label="Site ou programa" />
+          <select id="actClose" aria-label="Programa para fechar" hidden></select>
+          <button type="button" id="actAdd">Adicionar</button>
+        </div>
+        <datalist id="appList"></datalist>
+        <div class="row">
+          <button type="submit" class="send">Salvar modo</button>
+          <button type="button" id="modeCancel">Limpar</button>
+        </div>
+        <p id="modeMsg" class="modemsg" role="status"></p>
       </form>
     </aside>
 

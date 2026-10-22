@@ -1,5 +1,6 @@
 import { JarvisOrb } from "./orb.js";
 import { JarvisVoice } from "./voice.js";
+import { initModes } from "./modos.js";
 
 const $ = (id) => document.getElementById(id);
 const orb = new JarvisOrb($("scene"));
@@ -55,6 +56,7 @@ const ACTIONS = {
   abrir_programa: "abrindo programa",
   fechar_programa: "fechando programa",
   janela_jarvis: "janela do Jarvis",
+  ativar_modo: "ativando modo",
   controlar_midia: "controlando mídia",
   bloquear_computador: "bloqueando o computador",
 };
@@ -343,18 +345,25 @@ $("composer").addEventListener("submit", (e) => {
   ask(t);
 });
 
-function setChat(open) {
-  document.body.classList.toggle("chat", open);
-  $("chatToggle").setAttribute("aria-pressed", String(open));
+// Painéis do canto direito (Chat e Modos): um de cada vez.
+function setPanel(name) {
+  for (const p of ["chat", "modes"]) {
+    document.body.classList.toggle(p, p === name);
+    $(`${p}Toggle`).setAttribute("aria-pressed", String(p === name));
+  }
   try {
-    localStorage.setItem("jarvis.chat", open ? "1" : "0");
+    localStorage.setItem("jarvis.panel", name || "");
   } catch {}
-  if (open) $("text").focus();
+  if (name === "chat") $("text").focus();
 }
-$("chatToggle").addEventListener("click", () => setChat(!document.body.classList.contains("chat")));
+for (const p of ["chat", "modes"]) {
+  $(`${p}Toggle`).addEventListener("click", () => setPanel(document.body.classList.contains(p) ? null : p));
+}
 try {
-  if (localStorage.getItem("jarvis.chat") === "1") setChat(true);
+  const saved = localStorage.getItem("jarvis.panel");
+  if (saved === "chat" || saved === "modes") setPanel(saved);
 } catch {}
+initModes();
 
 // Leitura no canto da tela: qual cérebro e qual voz estão em uso.
 function updateReadout() {
@@ -400,7 +409,7 @@ setState();
 // Aberto pelo atalho (?auto): acorda sozinho. Se o navegador ainda bloquear o som, o botão
 // DESPERTAR fica na tela. Quando abre junto com o Windows (&rotina), roda a rotina.txt.
 const params = new URLSearchParams(location.search);
-if (params.has("rotina")) fetch("/api/rotina", { method: "POST" }).catch(() => {});
+if (params.has("rotina")) fetch("/api/rotina", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => {});
 if (params.has("auto")) {
   voice.init().then(() => {
     if (voice.unlocked) wake();

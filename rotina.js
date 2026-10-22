@@ -13,13 +13,15 @@ function lerPassos() {
   if (!fs.existsSync(ARQUIVO)) return [];
   const passos = [];
   for (const linha of fs.readFileSync(ARQUIVO, "utf8").split(/\r?\n/)) {
-    const m = linha.trim().match(/^(fechar|abrir)\s+(.+)$/i);
+    const m = linha.trim().match(/^(fechar|abrir|modo)\s+(.+)$/i);
     if (!m) continue;
     const verbo = m[1].toLowerCase();
     const alvo = m[2].trim().toLowerCase();
-    if (verbo === "fechar" && FECHAVEIS[alvo]) passos.push(["fechar_programa", { nome: alvo }]);
+    if (verbo === "modo") passos.push(["ativar_modo", { nome: alvo }]);
+    else if (verbo === "fechar" && FECHAVEIS[alvo]) passos.push(["fechar_programa", { nome: alvo }]);
     else if (verbo === "abrir" && PROGRAMAS[alvo]) passos.push(["abrir_programa", { nome: alvo }]);
     else if (verbo === "abrir" && /\./.test(alvo)) passos.push(["abrir_site", { url: alvo }]);
+    else if (verbo === "abrir") passos.push(["abrir_programa", { nome: alvo }]);
     else console.warn(`  Rotina: não entendi "${linha.trim()}"`);
   }
   return passos;

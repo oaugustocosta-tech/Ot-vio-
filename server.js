@@ -5,6 +5,9 @@ import { fileURLToPath } from "node:url";
 import { chat, describeError, BRAIN_LABEL, BRAIN_SHORT, NAME } from "./brain.js";
 import { synthesize, SERVER_VOICE, VOICE_LABEL } from "./speech.js";
 import { rodarRotina } from "./rotina.js";
+import { loadModes, saveModes } from "./modos.js";
+import { listStartApps } from "./apps.js";
+import { PROGRAMAS, FECHAVEIS, runMode } from "./tools.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
@@ -113,8 +116,44 @@ async function handleTts(req, res) {
   }
 }
 
+// Só aceita pedidos de alteração vindos da própria tela do Jarvis. Sem isso, qualquer site
+// aberto no navegador poderia mandar o Jarvis agir (os navegadores não deixam outro site
+// mandar JSON sem pedir permissão antes, e essa permissão o servidor nunca dá).
+function fromJarvis(req) {
+  const origin = req.headers.origin;
+  const own = !origin || origin === `http://localhost:${PORT}` || origin === `http://127.0.0.1:${PORT}`;
+  return own && /^application\/json\b/i.test(req.headers["content-type"] || "");
+}
+
+const sendJson = (res, status, data) => {
+  res.writeHead(status, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(data));
+};
+
+async function handleModes(req, res) {
+  if (req.method === "GET") {
+    return sendJson(res, 200, { modos: loadModes(), programas: Object.keys(PROGRAMAS), fechaveis: Object.keys(FECHAVEIS) });
+  }
+  const { modos } = await readJson(req);
+  const instalados = new Set((await listStartApps()).map((a) => a.id));
+  try {
+    sendJson(res, 200, { modos: saveModes(modos, { fechaveis: new Set(Object.keys(FECHAVEIS)), conhecidos: new Set(Object.keys(PROGRAMAS)), instalados }) });
+  } catch (err) {
+    sendJson(res, 400, { error: err.message });
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   try {
+    if (req.method === "POST" && !fromJarvis(req)) return sendJson(res, 403, { error: "Pedido recusado." });
+    if (req.url === "/api/modos" && (req.method === "GET" || req.method === "POST")) return await handleModes(req, res);
+    if (req.method === "GET" && req.url === "/api/apps") return sendJson(res, 200, await listStartApps());
+    if (req.method === "POST" && req.url === "/api/modos/testar") {
+      const { nome } = await readJson(req);
+      const modo = loadModes().find((m) => m.nome === nome);
+      if (!modo) return sendJson(res, 404, { error: "Modo não encontrado." });
+      return sendJson(res, 200, { ok: true, texto: await runMode(modo) });
+    }
     if (req.method === "POST" && req.url === "/api/chat") return await handleChat(req, res);
     if (req.method === "POST" && req.url === "/api/tts") return await handleTts(req, res);
     if (req.method === "POST" && req.url === "/api/rotina") {
@@ -136,7 +175,8 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
+// Só nesta máquina: ninguém da rede consegue falar com o Jarvis.
+server.listen(PORT, "localhost", () => {
   console.log(`\n  JARVIS online → http://localhost:${PORT}`);
   console.log(`  Cérebro: ${BRAIN_LABEL}`);
   console.log(`  Voz: ${VOICE_LABEL}\n`);

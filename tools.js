@@ -3,6 +3,8 @@
 // Nada aqui roda comando livre: só ações fixas desta lista. Para adicionar um programa,
 // inclua uma linha em PROGRAMAS.
 import { spawn, execFile } from "node:child_process";
+import { findStartApp, openApp } from "./apps.js";
+import { findMode, loadModes } from "./modos.js";
 
 const WINDOWS = process.platform === "win32";
 
@@ -124,19 +126,33 @@ export const TOOLS = [
   },
   {
     name: "abrir_programa",
-    description: `Abre um programa do computador. Programas disponíveis: ${Object.keys(PROGRAMAS).join(", ")}.`,
+    description: `Abre um programa do computador. Funciona com qualquer programa instalado (pelo nome que aparece no menu Iniciar, como Photoshop, Steam ou Visual Studio Code) e com estes atalhos: ${Object.keys(PROGRAMAS).join(", ")}.`,
     parameters: {
       type: "object",
-      properties: { nome: { type: "string", enum: Object.keys(PROGRAMAS) } },
+      properties: { nome: { type: "string", description: "Nome do programa" } },
       required: ["nome"],
     },
     async run({ nome }) {
       onlyWindows();
-      const prog = PROGRAMAS[String(nome || "").toLowerCase()];
-      if (!prog) throw new Error(`Não conheço o programa "${nome}".`);
-      if (prog.uri) await run("explorer.exe", [prog.uri]);
-      else await run("cmd.exe", ["/c", "start", prog.exe]);
-      return `Abrindo ${nome}.`;
+      return openProgram(nome);
+    },
+  },
+  {
+    name: "ativar_modo",
+    description: "Ativa um modo que ele criou na tela Modos do Jarvis (por exemplo 'trabalho' ou 'game'): abre e fecha os programas e sites daquele modo de uma vez. Os nomes dos modos criados aparecem junto da mensagem dele.",
+    parameters: {
+      type: "object",
+      properties: { nome: { type: "string", description: "Nome do modo, por exemplo trabalho" } },
+      required: ["nome"],
+    },
+    async run({ nome }) {
+      onlyWindows();
+      const modo = findMode(nome);
+      if (!modo) {
+        const nomes = loadModes().map((m) => m.nome);
+        throw new Error(nomes.length ? `Não existe o modo "${nome}". Modos criados: ${nomes.join(", ")}.` : "Nenhum modo criado ainda. Ele cria na tela Modos.");
+      }
+      return runMode(modo);
     },
   },
   {
@@ -149,10 +165,7 @@ export const TOOLS = [
     },
     async run({ nome }) {
       onlyWindows();
-      const exes = FECHAVEIS[String(nome || "").toLowerCase()];
-      if (!exes) throw new Error(`Não sei fechar "${nome}".`);
-      const code = await runWait("taskkill.exe", ["/F", "/T", ...exes.flatMap((e) => ["/IM", e])]);
-      return code === 0 ? `${nome} fechado.` : `${nome} não estava aberto.`;
+      return closeProgram(nome);
     },
   },
   {
@@ -210,6 +223,42 @@ export const TOOLS = [
     },
   },
 ];
+
+async function closeProgram(nome) {
+  const exes = FECHAVEIS[String(nome || "").toLowerCase()];
+  if (!exes) throw new Error(`Não sei fechar "${nome}".`);
+  const code = await runWait("taskkill.exe", ["/F", "/T", ...exes.flatMap((e) => ["/IM", e])]);
+  return code === 0 ? `${nome} fechado.` : `${nome} não estava aberto.`;
+}
+
+async function openProgram(nome) {
+  const atalho = PROGRAMAS[String(nome || "").toLowerCase()];
+  if (atalho) {
+    if (atalho.uri) await run("explorer.exe", [atalho.uri]);
+    else await run("cmd.exe", ["/c", "start", atalho.exe]);
+    return `Abrindo ${nome}.`;
+  }
+  const app = await findStartApp(nome);
+  if (!app) throw new Error(`Não encontrei "${nome}" entre os programas instalados.`);
+  await openApp(app.id);
+  return `Abrindo ${app.name}.`;
+}
+
+// Executa as ações de um modo, uma depois da outra; uma falha não para as outras.
+export async function runMode(modo) {
+  const feitos = [];
+  for (const a of modo.acoes) {
+    try {
+      if (a.tipo === "site") await openTarget(normalizeUrl(a.alvo));
+      else if (a.tipo === "app") a.id ? await openApp(a.id) : await openProgram(a.alvo);
+      else if (a.tipo === "fechar") await closeProgram(a.alvo);
+      feitos.push(a.alvo);
+    } catch (err) {
+      feitos.push(`${a.alvo} (falhou: ${err.message})`);
+    }
+  }
+  return `Modo ${modo.nome} ativado: ${feitos.join(", ")}.`;
+}
 
 export async function runTool(name, input) {
   const tool = TOOLS.find((t) => t.name === name);
