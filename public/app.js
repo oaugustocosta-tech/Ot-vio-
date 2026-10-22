@@ -14,6 +14,7 @@ let hearing = false; // ele está falando agora
 let active = false; // em conversa: ouve sem precisar dizer "Jarvis"
 let sleepAfter = false; // despedida: volta a esperar o "Jarvis" depois de responder
 let off = false; // desativado: só volta com "ativar Jarvis"
+let dictating = false; // modo ditado: tudo que ele fala é escrito na janela da frente
 let controller = null;
 
 // Quanto tempo ele continua ouvindo sem precisar do "Jarvis" depois de responder.
@@ -29,6 +30,11 @@ const OFF_CMD = /^(pode )?(se )?(desativ\w*( (o )?(jarvis|microfone|escuta))?|mo
 const SHUTDOWN_CMD = /^(pode )?(se )?(deslig\w*|fech\w*|encerr\w*)( (o )?(jarvis|sistema))?$/i;
 const WAKE_UP = /\b(ativ\w*|acord\w*|volt\w*|liga\w*)\b/i;
 // "Jarvis, para", "chega", "já entendi": corta a fala na hora.
+// Janela do próprio Jarvis: "Jarvis, se esconde" / "Jarvis, aparece".
+const HIDE_CMD = /^(se )?(minimiz\w*|escond\w*)( (a )?(tela|janela))?( (do )?jarvis)?$/i;
+const SHOW_CMD = /^(aparec\w*|mostr\w*( (a )?(tela|janela))?|volt\w* (pra|para) (a )?(tela|frente))$/i;
+// Ditado: "Jarvis, modo ditado", "Jarvis, escreve o que eu falar", "Jarvis, concentre na minha voz".
+const DICTATE_ON = /^((ativ\w*|entr\w*|liga\w*|abr\w*)( (o|no|em))? )?modo (de )?ditado$|^(come[cç]\w*|pode) (a )?(escrever|ditar)\b|^escrev\w* (tudo )?(o )?que eu (falar|disser|ditar)|^concentr\w* na minha voz/i;
 const STOP_CMD = /^(ok |t[aá] |j[aá] )?(para|pare|parar|pode parar|para de falar|para a[ií]|chega|basta|cala( a boca)?|sil[eê]ncio|j[aá] (entendi|deu|chega|t[aá] bom)|entendi|t[aá] bom|beleza|stop)( (jarvis|por favor|obrigad[oa]))?$/i;
 
 const hasWake = (text) => text.search(WAKE) >= 0;
@@ -42,11 +48,11 @@ function stripWake(text) {
 }
 
 // --- Estado visual -----------------------------------------------------------
-const LABELS = { off: "desativado", sleep: 'diga "Jarvis"', listening: "ouvindo", thinking: "pensando", speaking: "falando" };
+const LABELS = { dictating: "ditado", off: "desativado", sleep: 'diga "Jarvis"', listening: "ouvindo", thinking: "pensando", speaking: "falando" };
 
 function setState() {
   const state = speaking ? "speaking" : busy ? "thinking" : active || hearing ? "listening" : off ? "off" : "sleep";
-  $("statusText").textContent = LABELS[state];
+  $("statusText").textContent = LABELS[dictating && state === "listening" ? "dictating" : state];
   const st = $("statusText").parentElement;
   st.classList.toggle("on", state !== "sleep" && state !== "off");
   st.classList.toggle("pulse", state === "thinking" || state === "speaking");
@@ -116,7 +122,7 @@ function armIdle() {
   clearTimeout(idleTimer);
   if (!active) return;
   idleTimer = setTimeout(() => {
-    if (busy || speaking || hearing) armIdle();
+    if (busy || speaking || hearing || dictating) armIdle();
     else goSleep();
   }, ACTIVE_MS);
 }
@@ -381,7 +387,82 @@ function shutdown() {
   setTimeout(bye, 3500);
 }
 
+// --- Ditado ------------------------------------------------------------------------
+// Palavras faladas que viram pontuação ("vírgula", "ponto final", "nova linha"...).
+const PONTUACAO = [
+  [/\s*\bnovo par[aá]grafo\b\s*/gi, "\n\n"],
+  [/\s*\b(nova|pr[oó]xima|pula(r)?) linha\b\s*/gi, "\n"],
+  [/\s*\b(ponto de )?interroga[cç][aã]o\b/gi, "?"],
+  [/\s*\b(ponto de )?exclama[cç][aã]o\b/gi, "!"],
+  [/\s*\bdois pontos\b/gi, ":"],
+  [/\s*\bponto e v[ií]rgula\b/gi, ";"],
+  [/\s*\bv[ií]rgula\b/gi, ","],
+  [/\s*\bponto final\b/gi, "."],
+  [/\s*\bponto$/i, "."],
+];
+let dictWindow = 0; // janela onde o ditado está escrevendo
+let dictEnd = "\n"; // último caractere escrito, para saber se começa frase nova
+let dictChain = Promise.resolve();
+
+function formatDictation(raw) {
+  let t = raw.trim();
+  for (const [re, sub] of PONTUACAO) t = t.replace(re, sub);
+  // Maiúscula no começo de cada frase (inclusive quando a anterior terminou com ponto).
+  const novaFrase = /[.!?\n]$/.test(dictEnd);
+  t = t.replace(/([.!?]\s+|\n)(\p{Ll})/gu, (_, a, b) => a + b.toUpperCase());
+  if (novaFrase) t = t.replace(/^\p{Ll}/u, (c) => c.toUpperCase());
+  return /\n$/.test(t) ? t : `${t} `;
+}
+
+function typeDictation(raw) {
+  const texto = formatDictation(raw);
+  if (!texto.trim() && !texto.includes("\n")) return;
+  logLine("user", `✎ ${texto.trim()}`);
+  dictChain = dictChain.then(async () => {
+    const r = await fetch("/api/escrever", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ texto, janela: dictWindow }),
+    }).catch(() => null);
+    const body = await r?.json().catch(() => ({}));
+    if (r?.ok) {
+      dictWindow = body.janela || dictWindow;
+      dictEnd = texto.trimEnd().slice(-1) || "\n";
+    } else {
+      notice(body?.error || "Não consegui escrever.");
+      stopDictation(false);
+    }
+  });
+}
+
+function startDictation() {
+  dictating = true;
+  dictWindow = 0;
+  dictEnd = "\n";
+  activate(false);
+  sayLocal('Pode falar, senhor. Para parar, diga "Jarvis, parar ditado".');
+}
+
+function stopDictation(say = true) {
+  if (!dictating) return;
+  dictating = false;
+  setState();
+  armIdle();
+  if (say) sayLocal("Ditado encerrado.");
+}
+
+function janelaJarvis(acao) {
+  fetch("/api/janela-jarvis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ acao }) }).catch(() => {});
+}
+
 function handleUtterance(text) {
+  if (dictating && !off) {
+    // Sem o nome, tudo vira texto. Com o nome, o ditado acaba e o resto vale como pedido.
+    if (!hasWake(text)) return typeDictation(text);
+    const pedido = stripWake(text).replace(/[.!?,]+$/, "");
+    stopDictation(!pedido || /\b(para\w*|pare|fim|termin\w*|encerr\w*|sai\w*|chega)\b/i.test(pedido));
+    if (!pedido || /\b(ditado|escrever|para\w*|pare|fim|chega)\b/i.test(pedido)) return;
+  }
   if (off) {
     // Desativado: só "ativar Jarvis" (ou "Jarvis, acorda", "Jarvis, volta") traz de volta.
     if (hasWake(text) && WAKE_UP.test(text)) turnOn();
@@ -397,6 +478,16 @@ function handleUtterance(text) {
   // "para" depois que ele já terminou de falar: não há nada para cortar.
   if (STOP_CMD.test(bare.replace(/[,]/g, ""))) return activate(false);
   if (bare && SHUTDOWN_CMD.test(bare)) return shutdown();
+  if (bare && DICTATE_ON.test(bare)) return startDictation();
+  if (bare && HIDE_CMD.test(bare)) {
+    sayLocal("Fico aqui embaixo, senhor.");
+    return janelaJarvis("esconder");
+  }
+  if (bare && SHOW_CMD.test(bare)) {
+    activate(false);
+    sayLocal("Aqui estou.");
+    return janelaJarvis("mostrar");
+  }
   if (bare && OFF_CMD.test(bare)) return turnOff();
   // Só despedida ("obrigado", "pode descansar"): responde na hora e volta a esperar o nome.
   if (isFarewellOnly(cmd || text)) {

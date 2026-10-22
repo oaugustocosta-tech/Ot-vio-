@@ -3,7 +3,7 @@
 // Nada aqui roda comando livre: só ações fixas desta lista. Para adicionar um programa,
 // inclua uma linha em PROGRAMAS.
 import { spawn, execFile } from "node:child_process";
-import { findStartApp, openApp } from "./apps.js";
+import { findStartApp, openApp, normalize } from "./apps.js";
 import { runPs } from "./windows.js";
 import { findMode, loadModes } from "./modos.js";
 import * as spotify from "./spotify.js";
@@ -49,6 +49,117 @@ export const FECHAVEIS = {
   paint: ["mspaint.exe"],
   "epic games": ["EpicGamesLauncher.exe"],
 };
+
+// --- Janelas dos outros programas (windows/janelas.ps1) -------------------------------
+// Nome falado -> nomes de processo, para achar a janela de "bloco de notas", "calculadora"...
+const APELIDOS = {
+  "bloco de notas": ["notepad"],
+  calculadora: ["calculatorapp"],
+  explorador: ["explorer"],
+  arquivos: ["explorer"],
+  pastas: ["explorer"],
+  "gerenciador de tarefas": ["taskmgr"],
+  word: ["winword"],
+  excel: ["excel"],
+  powerpoint: ["powerpnt"],
+  paint: ["mspaint"],
+  navegador: ["chrome", "msedge", "firefox", "opera", "brave"],
+  edge: ["msedge"],
+};
+const ACOES_JANELA = ["minimizar", "maximizar", "restaurar", "trazer", "mover_monitor", "minimizar_tudo"];
+
+const ehJarvis = (j) => j.processo === "msedge" && /^JARVIS\b/.test(j.titulo);
+
+async function listarJanelas() {
+  const d = JSON.parse(await runPs("janelas.ps1", ["-Acao", "listar"]));
+  const janelas = (Array.isArray(d.janelas) ? d.janelas : [d.janelas]).filter(Boolean);
+  // Fora da lista: o próprio Jarvis e a área de trabalho.
+  return { janelas: janelas.filter((j) => !ehJarvis(j) && j.titulo !== "Program Manager"), monitores: d.monitores };
+}
+
+// A janela mais à frente que combina com o nome falado (pelo programa ou pelo título).
+function acharJanela(janelas, alvo) {
+  const q = normalize(alvo).replace(/^(o|a|os|as) /, "");
+  if (!q) return null;
+  const procs = APELIDOS[q] || [];
+  const junto = q.replace(/ /g, "");
+  return (
+    janelas.find((j) => procs.includes(j.processo.toLowerCase())) ||
+    janelas.find((j) => normalize(j.processo) === junto) ||
+    janelas.find((j) => normalize(j.titulo).includes(q)) ||
+    janelas.find((j) => junto.length >= 4 && normalize(j.processo).includes(junto)) ||
+    null
+  );
+}
+
+const nomeJanela = (j) => j.titulo.split(" - ").pop().trim() || j.processo;
+
+async function janelaDe(alvo) {
+  const { janelas, monitores } = await listarJanelas();
+  const j = acharJanela(janelas, alvo);
+  if (!j) {
+    const abertas = [...new Set(janelas.slice(0, 8).map(nomeJanela))].join(", ");
+    throw new Error(`Não achei nenhuma janela aberta de "${alvo}".${abertas ? ` Abertas agora: ${abertas}.` : ""}`);
+  }
+  return { j, monitores };
+}
+
+export async function controlarJanela({ acao, alvo, monitor }) {
+  onlyWindows();
+  if (!ACOES_JANELA.includes(acao)) throw new Error(`Ação desconhecida: ${acao}`);
+  if (acao === "minimizar_tudo") {
+    await runPs("janelas.ps1", ["-Acao", "minimizar_tudo"]);
+    return "Tudo minimizado.";
+  }
+  const { j, monitores } = await janelaDe(alvo);
+  const nome = nomeJanela(j);
+  if (acao === "mover_monitor") {
+    const n = Math.round(Number(monitor) || 1);
+    const out = (await runPs("janelas.ps1", ["-Acao", "monitor", "-Janela", String(j.janela), "-Monitor", String(n)])).trim();
+    if (out.startsWith("SEM")) throw new Error(`Só existe${monitores > 1 ? "m" : ""} ${monitores} monitor${monitores > 1 ? "es" : ""}.`);
+    return `${nome} no monitor ${n}.`;
+  }
+  const ps = { minimizar: "minimizar", maximizar: "maximizar", restaurar: "restaurar", trazer: "frente" }[acao];
+  await runPs("janelas.ps1", ["-Acao", ps, "-Janela", String(j.janela)]);
+  return { minimizar: `${nome} minimizado.`, maximizar: `${nome} maximizado.`, restaurar: `${nome} restaurado.`, trazer: `${nome} na frente.` }[acao];
+}
+
+// Fecha como quem clica no X; se o programa perguntar "deseja sair?", encerra ele de vez.
+// Sem janela aberta (Discord e Steam ficam perto do relógio), usa a lista FECHAVEIS.
+export async function fecharPrograma(nome) {
+  onlyWindows();
+  let achou = null;
+  try {
+    achou = (await janelaDe(nome)).j;
+  } catch (err) {
+    if (FECHAVEIS[normalize(nome)] || FECHAVEIS[String(nome).toLowerCase()]) return closeProgram(String(nome).toLowerCase());
+    throw err;
+  }
+  const out = (await runPs("janelas.ps1", ["-Acao", "fechar", "-Janela", String(achou.janela)], 30_000)).trim();
+  const nomeJ = nomeJanela(achou);
+  if (out === "PERGUNTOU") return `${nomeJ} abriu uma pergunta antes de fechar; está na tela.`;
+  return `${nomeJ} fechado.`;
+}
+
+// Escreve um texto: cola na janela pedida ou, sem nome, na que está mais à frente (fora o Jarvis).
+// Devolve o número da janela, para o ditado continuar escrevendo nela.
+export async function escreverTexto(texto, { alvo, janela } = {}) {
+  onlyWindows();
+  texto = String(texto || "");
+  if (!texto) throw new Error("Nada para escrever.");
+  let alvoJanela = Number(janela) || 0;
+  let nome = "";
+  if (!alvoJanela) {
+    const { janelas } = await listarJanelas();
+    const j = alvo ? acharJanela(janelas, alvo) : janelas[0];
+    if (!j) throw new Error(alvo ? `Não achei nenhuma janela aberta de "${alvo}".` : "Não achei nenhuma janela para escrever.");
+    alvoJanela = j.janela;
+    nome = nomeJanela(j);
+  }
+  const b64 = Buffer.from(texto.slice(0, 5000), "utf8").toString("base64");
+  await runPs("janelas.ps1", ["-Acao", "escrever", "-Janela", String(alvoJanela), "-Texto64", b64]);
+  return { janela: alvoJanela, nome };
+}
 
 // Mostra ou esconde a janela do Jarvis (o título dela é "JARVIS"); ver windows/janela.ps1.
 const JANELA = ["mostrar", "esconder"];
@@ -160,15 +271,51 @@ export const TOOLS = [
   },
   {
     name: "fechar_programa",
-    description: `Fecha um programa que está aberto no computador. Programas que posso fechar: ${Object.keys(FECHAVEIS).join(", ")}.`,
+    description:
+      "Fecha um programa aberto: qualquer janela pelo nome do programa ou pelo título (por exemplo bloco de notas, AdsPower, Chrome, YouTube). Se o programa perguntar se quer mesmo sair, encerra ele de vez. Também fecha os que ficam perto do relógio: " +
+      Object.keys(FECHAVEIS).join(", ") +
+      ".",
     parameters: {
       type: "object",
-      properties: { nome: { type: "string", enum: Object.keys(FECHAVEIS) } },
+      properties: { nome: { type: "string", description: "Nome do programa ou parte do título da janela" } },
       required: ["nome"],
     },
     async run({ nome }) {
-      onlyWindows();
-      return closeProgram(nome);
+      return fecharPrograma(nome);
+    },
+  },
+  {
+    name: "controlar_janela",
+    description:
+      "Mexe na janela de um programa aberto (pelo nome do programa ou parte do título): minimizar, maximizar, restaurar, trazer para a frente, mover para outro monitor (monitor 1 é o principal) ou minimizar tudo (mostrar a área de trabalho). Não use para a janela do próprio Jarvis (para ela, use janela_jarvis).",
+    parameters: {
+      type: "object",
+      properties: {
+        acao: { type: "string", enum: ACOES_JANELA },
+        alvo: { type: "string", description: "Nome do programa ou parte do título, por exemplo 'bloco de notas' ou 'AdsPower'" },
+        monitor: { type: "integer", description: "Para mover_monitor: 1 é o principal, 2 o segundo..." },
+      },
+      required: ["acao"],
+    },
+    async run(input) {
+      return controlarJanela(input);
+    },
+  },
+  {
+    name: "escrever_texto",
+    description:
+      "Escreve (digita) um texto num programa aberto, como o Bloco de Notas, o Word ou um campo do navegador. Sem programa, escreve na janela que está na frente. Escreva exatamente o que ele pediu, com acentos e pontuação. Para ditado longo (ele falar e você ir escrevendo), diga a ele para falar 'Jarvis, modo ditado'.",
+    parameters: {
+      type: "object",
+      properties: {
+        texto: { type: "string", description: "O texto a escrever" },
+        programa: { type: "string", description: "Em qual programa escrever, se ele disser" },
+      },
+      required: ["texto"],
+    },
+    async run({ texto, programa }) {
+      const { nome } = await escreverTexto(texto, { alvo: programa });
+      return `Escrito${nome ? ` em ${nome}` : ""}.`;
     },
   },
   {
