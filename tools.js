@@ -1,4 +1,4 @@
-// Ações que o Ultron pode executar no computador.
+// Ações que o Jarvis pode executar no computador.
 // Cada ferramenta tem uma descrição (o que a IA lê para decidir quando usar) e uma função `run`.
 // Nada aqui roda comando livre: só ações fixas desta lista. Para adicionar um programa,
 // inclua uma linha em PROGRAMAS.

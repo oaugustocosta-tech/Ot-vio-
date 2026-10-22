@@ -1,8 +1,8 @@
 {
-  "name": "ultron",
+  "name": "jarvis",
   "version": "1.0.0",
   "private": true,
-  "description": "Ultron — assistente pessoal de voz em forma de orbe, que conversa e executa ações no computador",
+  "description": "Jarvis — assistente pessoal de voz em forma de orbe, que conversa e executa ações no computador",
   "type": "module",
   "scripts": {
     "start": "node --env-file-if-exists=.env server.js"
