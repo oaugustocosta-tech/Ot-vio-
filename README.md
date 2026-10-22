@@ -23,6 +23,7 @@ Pronto. Ao ligar o PC, ele abre em tela cheia, diz "Bom dia, senhor" e roda a su
 - **"Jarvis, desativar"** (ou "modo silencioso", "para de me ouvir"): ele para de reagir a tudo, até ao nome, e só volta quando você diz **"ativar Jarvis"** (ou clica no núcleo).
 - **"Jarvis, desligar"** (ou "fechar o Jarvis"): fecha a janela e o Jarvis de vez. Para abrir de novo, use o atalho.
 - **Minimizado ele continua ouvindo.** Só não feche a janela. "Jarvis, se esconde" minimiza; "Jarvis, aparece" traz de volta. **F11** sai da tela cheia.
+- **"Jarvis, para"** (ou "chega", "já entendi", "para de falar") enquanto ele fala: corta a fala na hora. Sem o nome também funciona, desde que a palavra não esteja na frase que ele está dizendo; com o nome é garantido.
 - **Clicar no reator** também chama. Clicar enquanto ele fala corta a fala.
 - **Chat** (canto superior direito): mostra a conversa escrita e um campo para digitar. Fica escondido por padrão.
 - Exemplos: "abre o YouTube", "fecha o Discord", "toca lofi na Alexa", "LED azul", "modo game", "abre o Telegram", "pesquisa a previsão do tempo de amanhã", "aumenta o volume", "pausa a música", "bloqueia o computador".
@@ -39,7 +40,12 @@ Com Spotify **Premium**, o Jarvis toca músicas, artistas e playlists e controla
 
 ## LED do PC (ASUS Aura / Armoury Crate)
 
-Com o Armoury Crate instalado (com o Aura), o Jarvis muda a cor dos LEDs: "Jarvis, LED azul", "Jarvis, apaga o LED", "Jarvis, devolve o LED" (volta ao efeito que estava no Armoury Crate). Dá para colocar a cor do LED num modo, por exemplo o modo game acendendo vermelho. Isso usa o kit do Aura que o próprio Armoury Crate instala; se ele não estiver lá, o Jarvis avisa.
+Com o Armoury Crate instalado (com o Aura), o Jarvis muda a cor dos LEDs ligados à placa-mãe ASUS (os do gabinete, fans, fitas): "Jarvis, LED azul", "Jarvis, apaga o LED", "Jarvis, devolve o LED" (volta ao efeito que estava no Armoury Crate). Dá para colocar a cor do LED num modo, por exemplo o modo game acendendo vermelho. Isso usa o kit do Aura que o próprio Armoury Crate instala; se ele não estiver lá, o Jarvis avisa e diz o motivo. Quando dá certo, ele diz quantos aparelhos e luzes mudou.
+
+Se a cor não mudar:
+- Veja se o próprio Armoury Crate (aba Aura Sync) consegue mudar a cor do gabinete. Se nem ele consegue, o Jarvis também não.
+- No Windows 11, a **Iluminação Dinâmica** pode tomar o controle dos LEDs: em Configurações > Personalização > Iluminação dinâmica, desligue "Usar a Iluminação Dinâmica nos meus dispositivos" (ou coloque o Armoury Crate em primeiro na lista).
+- Não precisa abrir o Aura Creator: ele é só para criar efeitos.
 
 ## A rotina de quando o PC liga
 
@@ -59,7 +65,9 @@ Por padrão, o Jarvis fala com as vozes neurais da Microsoft (as mesmas do "Ler 
 
 ## Microfone
 
-Qualquer microfone funciona: o do headset, o de uma webcam, ou o embutido de um notebook. O reconhecimento de voz é o do próprio Edge (serviço da Microsoft), então o microfone fica aberto o tempo todo enquanto o Jarvis estiver rodando, mas ele só age quando ouve o nome dele. Enquanto fala, ele para de ouvir, para não escutar a própria voz.
+Qualquer microfone funciona: o do headset, o de uma webcam, ou o embutido de um notebook. O reconhecimento de voz é o do próprio Edge (serviço da Microsoft), então o microfone fica aberto o tempo todo enquanto o Jarvis estiver rodando, mas ele só age quando ouve o nome dele. Enquanto fala, ele só aceita "para", para não obedecer à própria voz saindo na caixa de som.
+
+No botão **Áudio** (canto superior direito) dá para escolher, só para o Jarvis, o microfone (por exemplo o do headset) e por onde sai a voz dele (por exemplo a soundbar), sem mexer no som do Windows. A escolha fica salva. Se o Edge for antigo e não aceitar o microfone escolhido, ele usa o microfone padrão do Windows. A voz reserva do navegador (a que só aparece quando as outras falham) sempre sai no som padrão do Windows.
 
 ## Para quem programa
 

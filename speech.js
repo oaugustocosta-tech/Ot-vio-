@@ -36,7 +36,7 @@ const downUntil = { eleven: 0, edge: 0 };
 const isDown = (k) => Date.now() < downUntil[k];
 const markDown = (k, ms) => (downUntil[k] = Date.now() + ms);
 
-async function elevenLabs(text) {
+async function elevenLabs(text, tentativa = 0) {
   let res;
   try {
     res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE}?output_format=mp3_44100_64`, {
@@ -57,6 +57,12 @@ async function elevenLabs(text) {
   }
   if (!res.ok) {
     const body = await res.text();
+    // 429: muitas frases pedidas ao mesmo tempo (o plano grátis aceita poucas). Espera um
+    // pouquinho e tenta de novo, em vez de trocar de voz no meio da resposta.
+    if (res.status === 429 && !/quota/i.test(body) && tentativa < 3) {
+      await new Promise((r) => setTimeout(r, 350 * (tentativa + 1)));
+      return elevenLabs(text, tentativa + 1);
+    }
     console.error(`  ElevenLabs ${res.status}: ${body.slice(0, 300)}`);
     // Sem créditos ou chave inválida: não adianta tentar de novo tão cedo.
     markDown("eleven", res.status === 401 || res.status === 402 || /quota/i.test(body) ? 30 * 60_000 : 60_000);

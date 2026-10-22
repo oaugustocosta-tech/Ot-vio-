@@ -28,6 +28,8 @@ const FAREWELL = /\b(pode (descansar|dormir|parar|ir)|dispensado|tchau|at[eé] (
 const OFF_CMD = /^(pode )?(se )?(desativ\w*( (o )?(jarvis|microfone|escuta))?|modo (silencioso|soneca|off)|para de (me )?(ouvir|escutar)|n[aã]o me (ouve|ou[cç]a|escuta)|fica (quieto|em sil[eê]ncio))$/i;
 const SHUTDOWN_CMD = /^(pode )?(se )?(deslig\w*|fech\w*|encerr\w*)( (o )?(jarvis|sistema))?$/i;
 const WAKE_UP = /\b(ativ\w*|acord\w*|volt\w*|liga\w*)\b/i;
+// "Jarvis, para", "chega", "já entendi": corta a fala na hora.
+const STOP_CMD = /^(ok |t[aá] |j[aá] )?(para|pare|parar|pode parar|para de falar|para a[ií]|chega|basta|cala( a boca)?|sil[eê]ncio|j[aá] (entendi|deu|chega|t[aá] bom)|entendi|t[aá] bom|beleza|stop)( (jarvis|por favor|obrigad[oa]))?$/i;
 
 const hasWake = (text) => text.search(WAKE) >= 0;
 
@@ -149,7 +151,6 @@ async function ask(userText) {
   history.push({ role: "user", content: userText });
   logLine("user", userText);
   busy = true;
-  pauseListening();
   setState();
 
   controller = new AbortController();
@@ -209,7 +210,12 @@ async function ask(userText) {
     if (full.trim()) history.push({ role: "assistant", content: full });
     else history.pop();
   } catch (err) {
-    if (err.name === "AbortError") return;
+    if (err.name === "AbortError") {
+      // Cortado no meio ("Jarvis, para"): guarda o que ele chegou a dizer.
+      if (full.trim()) history.push({ role: "assistant", content: full });
+      else history.pop();
+      return;
+    }
     history.pop();
     logText.textContent = `Falha: ${err.message}`;
     notice(err.message);
@@ -234,21 +240,48 @@ function afterTurn() {
 
 // --- Reconhecimento de voz ---------------------------------------------------
 // Fica ligado o tempo todo (também com a janela minimizada), mas só reage quando ouve "Jarvis".
-// Enquanto ele fala ou pensa, o microfone pausa para não ouvir a própria voz.
+// Enquanto ele fala ou pensa, só aceita "para": o resto pode ser a própria voz saindo na caixa.
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recog = null;
 let recogOn = false;
 let micAllowed = true;
 let retryDelay = 300;
 let listenTimer = null;
+let ignoreUntil = 0; // logo depois de cortar a fala, ignora o resto do "para de falar"
+
+// Áudio escolhido no painel Áudio (vazio = o padrão do Windows).
+const audio = { mic: "", out: "" };
+try {
+  Object.assign(audio, JSON.parse(localStorage.getItem("jarvis.audio") || "{}"));
+} catch {}
+let micTrack = null;
+
+// Microfone escolhido. O reconhecimento de voz usa o padrão do Windows, a não ser que o
+// navegador aceite receber o microfone pronto (Edge e Chrome novos aceitam).
+async function chosenMic() {
+  if (!audio.mic) return null;
+  if (micTrack?.readyState === "live") return micTrack;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { deviceId: { exact: audio.mic }, echoCancellation: true, noiseSuppression: true },
+    });
+    micTrack = stream.getAudioTracks()[0];
+  } catch {
+    micTrack = null;
+    notice("Não achei o microfone escolhido. Usando o padrão do Windows.");
+  }
+  return micTrack;
+}
 
 function listenSoon(delay = 250) {
   clearTimeout(listenTimer);
   listenTimer = setTimeout(startListening, delay);
 }
 
-function startListening() {
-  if (!Recognition || !micAllowed || recogOn || busy || speaking) return;
+async function startListening() {
+  if (!Recognition || !micAllowed || recogOn) return;
+  recogOn = true; // reservado enquanto prepara o microfone
+  const track = await chosenMic();
   recog = new Recognition();
   recog.lang = "pt-BR";
   recog.continuous = true;
@@ -275,16 +308,42 @@ function startListening() {
     listenSoon(retryDelay);
   };
   try {
-    recog.start();
-    recogOn = true;
+    if (track) {
+      try {
+        recog.start(track);
+      } catch {
+        recog.start(); // navegador sem suporte: microfone padrão
+      }
+    } else recog.start();
   } catch {
+    recogOn = false;
     listenSoon(1000);
   }
 }
 
-function pauseListening() {
-  clearTimeout(listenTimer);
+// Recomeça a escuta do zero, jogando fora o que estava sendo ouvido.
+function restartListening() {
   if (recog && recogOn) recog.abort();
+  else listenSoon();
+}
+
+// "Jarvis, para" enquanto ele fala ou pensa.
+function isStopCmd(text) {
+  const wake = hasWake(text);
+  if (!wake && !active) return false;
+  const cmd = stripWake(text).replace(/[.,!?]/g, "").replace(/\s+/g, " ").trim();
+  if (!STOP_CMD.test(cmd)) return false;
+  if (wake) return true;
+  // Sem o nome, só vale se não for um pedaço do que ele mesmo está dizendo ("para" é comum).
+  return !voice.currentText.toLowerCase().includes(cmd.toLowerCase());
+}
+
+// Corta a fala e a resposta que ainda estava chegando.
+function interrupt() {
+  ignoreUntil = Date.now() + 1500;
+  controller?.abort();
+  voice.stop();
+  setState();
 }
 
 function onResult(e) {
@@ -296,6 +355,11 @@ function onResult(e) {
     else interim += r[0].transcript;
   }
   const heard = `${finalText} ${interim}`.trim();
+  if (Date.now() < ignoreUntil) return;
+  if (busy || speaking) {
+    if (!off && heard && isStopCmd(heard)) interrupt();
+    return;
+  }
   // Resposta imediata ao ouvir "Jarvis", antes mesmo de ele terminar a frase.
   if (!off && !hearing && heard && (active || hasWake(heard))) {
     hearing = true;
@@ -356,6 +420,8 @@ function handleUtterance(text) {
   const cmd = stripWake(text);
   // "desliga o Jarvis" vira "desliga o" depois de tirar o nome.
   const bare = cmd.replace(/[.!?]+$/, "").replace(/\s+(o|a)$/i, "");
+  // "para" depois que ele já terminou de falar: não há nada para cortar.
+  if (STOP_CMD.test(bare.replace(/[,]/g, ""))) return activate(false);
   if (bare && SHUTDOWN_CMD.test(bare)) return shutdown();
   if (bare && OFF_CMD.test(bare)) return turnOff();
   // Só despedida ("obrigado", "pode descansar"): responde na hora e volta a esperar o nome.
@@ -373,7 +439,8 @@ function handleUtterance(text) {
 
 voice.onSpeakingChange = (on) => {
   speaking = on;
-  if (on) pauseListening();
+  // Ao terminar de falar, recomeça a escuta para não confundir o fim da própria voz com um pedido.
+  if (!on) restartListening();
   setState();
   if (!on && !busy) afterTurn();
 };
@@ -382,8 +449,8 @@ voice.onSpeakingChange = (on) => {
 // Clicar no reator: chama o Jarvis (ou corta a fala dele).
 $("scene").addEventListener("click", () => {
   if (!voice.ctx) return;
-  if (speaking) {
-    voice.stop();
+  if (speaking || busy) {
+    interrupt();
     return;
   }
   if (off) turnOn();
@@ -398,9 +465,10 @@ $("composer").addEventListener("submit", (e) => {
   ask(t);
 });
 
-// Painéis do canto direito (Chat e Modos): um de cada vez.
+// Painéis do canto direito (Chat, Modos e Áudio): um de cada vez.
+const PANELS = ["chat", "modes", "audio"];
 function setPanel(name) {
-  for (const p of ["chat", "modes"]) {
+  for (const p of PANELS) {
     document.body.classList.toggle(p, p === name);
     $(`${p}Toggle`).setAttribute("aria-pressed", String(p === name));
   }
@@ -408,15 +476,88 @@ function setPanel(name) {
     localStorage.setItem("jarvis.panel", name || "");
   } catch {}
   if (name === "chat") $("text").focus();
+  if (name === "audio") fillDevices();
 }
-for (const p of ["chat", "modes"]) {
+for (const p of PANELS) {
   $(`${p}Toggle`).addEventListener("click", () => setPanel(document.body.classList.contains(p) ? null : p));
 }
 try {
   const saved = localStorage.getItem("jarvis.panel");
-  if (saved === "chat" || saved === "modes") setPanel(saved);
+  if (PANELS.includes(saved)) setPanel(saved);
 } catch {}
 initModes();
+
+// --- Painel Áudio: por onde ele ouve e por onde ele fala --------------------------
+function audioMsg(text, ok = true) {
+  $("audioMsg").textContent = text;
+  $("audioMsg").classList.toggle("ok", ok);
+}
+
+async function fillDevices() {
+  if (!navigator.mediaDevices?.enumerateDevices) return;
+  let devices = await navigator.mediaDevices.enumerateDevices();
+  // Sem permissão do microfone o navegador esconde os nomes: pede uma vez.
+  if (devices.some((d) => d.kind === "audioinput" && !d.label)) {
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+      s.getTracks().forEach((t) => t.stop());
+      devices = await navigator.mediaDevices.enumerateDevices();
+    } catch {}
+  }
+  for (const [sel, kind, key] of [[$("micSel"), "audioinput", "mic"], [$("outSel"), "audiooutput", "out"]]) {
+    sel.innerHTML = "";
+    sel.append(new Option("Padrão do Windows", ""));
+    for (const d of devices) {
+      if (d.kind !== kind || d.deviceId === "default" || d.deviceId === "communications") continue;
+      sel.append(new Option(d.label || "Dispositivo sem nome", d.deviceId));
+    }
+    sel.value = [...sel.options].some((o) => o.value === audio[key]) ? audio[key] : "";
+  }
+  $("outSel").disabled = !voice.ctx?.setSinkId;
+}
+
+function saveAudio() {
+  try {
+    localStorage.setItem("jarvis.audio", JSON.stringify(audio));
+  } catch {}
+}
+
+async function applyOutput() {
+  if (!audio.out || !voice.ctx) return;
+  try {
+    await voice.setOutput(audio.out);
+  } catch {
+    notice("Não achei a saída de som escolhida. Usando o padrão do Windows.");
+  }
+}
+
+$("micSel").addEventListener("change", () => {
+  audio.mic = $("micSel").value;
+  saveAudio();
+  micTrack?.stop();
+  micTrack = null;
+  restartListening();
+  audioMsg('Microfone trocado. Diga "Jarvis" para testar.');
+});
+$("outSel").addEventListener("change", async () => {
+  audio.out = $("outSel").value;
+  saveAudio();
+  if (!voice.ctx) return;
+  try {
+    await voice.setOutput(audio.out);
+    audioMsg("Saída trocada.");
+    chime(true);
+  } catch (err) {
+    audioMsg(err.message, false);
+  }
+});
+$("audioTest").addEventListener("click", () => {
+  if (!voice.ctx) return;
+  voice.say("Testando, senhor. Esta é a minha voz.");
+});
+navigator.mediaDevices?.addEventListener?.("devicechange", () => {
+  if (document.body.classList.contains("audio")) fillDevices();
+});
 
 // Leitura no canto da tela: qual cérebro e qual voz estão em uso.
 function updateReadout() {
@@ -462,6 +603,7 @@ function wake() {
 $("wake").addEventListener("click", async () => {
   if (!voice.ctx) await voice.init();
   else await voice.ctx.resume();
+  await applyOutput();
   wake();
 });
 
@@ -472,7 +614,8 @@ setState();
 const params = new URLSearchParams(location.search);
 if (params.has("rotina")) fetch("/api/rotina", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => {});
 if (params.has("auto")) {
-  voice.init().then(() => {
+  voice.init().then(async () => {
+    await applyOutput();
     if (voice.unlocked) wake();
   });
 }
