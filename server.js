@@ -10,7 +10,7 @@ import { synthesize, SERVER_VOICE, VOICE_LABEL } from "./speech.js";
 import { rodarRotina } from "./rotina.js";
 import { loadModes, saveModes } from "./modos.js";
 import { listStartApps } from "./apps.js";
-import { PROGRAMAS, FECHAVEIS, runMode } from "./tools.js";
+import { PROGRAMAS, FECHAVEIS, runMode, runTool, escreverTexto } from "./tools.js";
 import { CORES } from "./led.js";
 import * as spotify from "./spotify.js";
 import { diagnostico } from "./diagnostico.js";
@@ -237,6 +237,21 @@ const server = http.createServer(async (req, res) => {
       const modo = loadModes().find((m) => m.nome === nome);
       if (!modo) return sendJson(res, 404, { error: "Modo não encontrado." });
       return sendJson(res, 200, { ok: true, texto: await runMode(modo) });
+    }
+    if (req.method === "POST" && req.url === "/api/escrever") {
+      // Modo ditado: cada frase falada chega aqui e é colada na janela escolhida.
+      const { texto, janela } = await readJson(req, 20_000);
+      try {
+        return sendJson(res, 200, await escreverTexto(texto, { janela }));
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+    if (req.method === "POST" && req.url === "/api/janela-jarvis") {
+      // "Jarvis, se esconde" / "Jarvis, aparece": direto, sem passar pelo cérebro.
+      const { acao } = await readJson(req);
+      const r = await runTool("janela_jarvis", { acao });
+      return sendJson(res, r.ok ? 200 : 400, r.ok ? { ok: true } : { error: r.text });
     }
     if (req.method === "POST" && req.url === "/api/chat") return await handleChat(req, res);
     if (req.method === "POST" && req.url === "/api/tts") return await handleTts(req, res);

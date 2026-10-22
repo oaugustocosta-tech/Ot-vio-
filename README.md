@@ -28,6 +28,8 @@ Suas coisas (chaves, modos, conexão do Spotify e a rotina) ficam numa pasta sep
 - Fora disso, ele ignora o que ouve: conversa no ambiente, TV, música.
 - **"Jarvis, desativar"** (ou "modo silencioso", "para de me ouvir"): ele para de reagir a tudo, até ao nome, e só volta quando você diz **"ativar Jarvis"** (ou clica no núcleo).
 - **"Jarvis, desligar"** (ou "fechar o Jarvis"): fecha a janela e o Jarvis de vez. Para abrir de novo, use o atalho.
+- **Janelas de qualquer programa:** "Jarvis, minimiza o bloco de notas", "maximiza o Chrome", "traz o WhatsApp para a frente", "fecha o AdsPower" (se o programa perguntar "deseja sair?", ele encerra de vez), "passa o bloco de notas para o monitor 1" (o 1 é o principal), "minimiza tudo". Vale o nome do programa ou um pedaço do título da janela, como "fecha o YouTube".
+- **Escrever:** "Jarvis, escreve meu nome" escreve na janela que está na frente (ou "escreve ... no bloco de notas"). Para ditar um texto longo, diga **"Jarvis, modo ditado"** (ou "escreve o que eu falar"): tudo que você falar vai sendo escrito, sem precisar dizer "Jarvis". Fale "vírgula", "ponto final", "interrogação", "nova linha" ou "novo parágrafo" para pontuar. Para parar, **"Jarvis, parar ditado"**.
 - **Minimizado ele continua ouvindo.** Só não feche a janela. "Jarvis, se esconde" minimiza; "Jarvis, aparece" traz de volta. **F11** sai da tela cheia.
 - **"Jarvis, para"** (ou "chega", "já entendi", "para de falar") enquanto ele fala: corta a fala na hora. Sem o nome também funciona, desde que a palavra não esteja na frase que ele está dizendo; com o nome é garantido.
 - **Clicar no reator** também chama. Clicar enquanto ele fala corta a fala.
