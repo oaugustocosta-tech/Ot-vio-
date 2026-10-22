@@ -3,6 +3,9 @@
 import { elevenLabs, azureTts, edgeTts } from "./speech.js";
 import { motivoRede } from "./rede.js";
 import * as spotify from "./spotify.js";
+import { listarJanelas } from "./tools.js";
+import { contarLed } from "./led.js";
+import { versaoLocal, versaoNova } from "./atualizar.js";
 
 const ELEVEN_KEY = process.env.ELEVENLABS_API_KEY || "";
 const GROQ_KEY = process.env.GROQ_API_KEY || "";
@@ -26,8 +29,16 @@ async function get(url, headers = {}) {
   return { status: r.status, body };
 }
 
+const WINDOWS = process.platform === "win32";
+
 export async function diagnostico() {
   const testes = [
+    teste("Versão do Jarvis", async () => {
+      const local = versaoLocal();
+      const nova = await versaoNova();
+      if (nova && local && nova.sha !== local) throw new Error(`tem versão nova (${nova.sha.slice(0, 7)}): feche o Jarvis e abra pelo atalho`);
+      return local ? `${local.slice(0, 7)}${nova ? " (a mais nova)" : ""}` : "desconhecida (abra pelo atalho para atualizar)";
+    }),
     teste("Internet", async () => {
       const { status } = await get("https://www.google.com/generate_204");
       if (status >= 400) throw new Error(`resposta ${status}`);
@@ -54,6 +65,16 @@ export async function diagnostico() {
       if (!st.conectado) throw new Error(st.configurado ? "falta clicar em Conectar no quadro Spotify" : "não conectado (quadro Spotify em Modos)");
       const lista = await spotify.devices();
       return lista.length ? `aparelhos: ${lista.map((d) => d.name).join(", ")}` : "conectado, mas nenhum aparelho aberto agora";
+    }),
+    teste("Janelas e monitores", async () => {
+      if (!WINDOWS) return "só no Windows";
+      const { janelas, monitores } = await listarJanelas();
+      const nomes = [...new Set(janelas.slice(0, 4).map((j) => j.processo))].join(", ");
+      return `${monitores} monitor(es), ${janelas.length} janelas abertas${nomes ? ` (${nomes}...)` : ""}`;
+    }),
+    teste("LED (Aura)", async () => {
+      if (!WINDOWS) return "só no Windows";
+      return contarLed();
     }),
   ];
   const resultados = await Promise.all(testes);

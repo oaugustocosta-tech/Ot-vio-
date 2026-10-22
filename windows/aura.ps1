@@ -9,7 +9,13 @@ while ($true) {
   if ($null -eq $linha) { break }
   try {
     $p = $linha.Split(' ')
-    if ($p[0] -eq 'soltar') {
+    if ($p[0] -eq 'contar') {
+      # Diagnostico: quantos aparelhos e luzes o Aura enxerga, e o nome de cada aparelho.
+      $placas = 0; $luzes = 0; $nomes = @()
+      foreach ($dev in $sdk.Enumerate(0)) { $placas++; $luzes += $dev.Lights.Count; $nomes += "$($dev.Name)" }
+      [Console]::Out.WriteLine("OK $placas $luzes " + ($nomes -join ';'))
+      continue
+    } elseif ($p[0] -eq 'soltar') {
       if ($ativo) { $sdk.ReleaseControl(0); $ativo = $false }
     } else {
       if (-not $ativo) { $sdk.SwitchMode(); $ativo = $true }

@@ -82,7 +82,14 @@ async function send(cmd) {
     throw new Error("O Aura respondeu, mas não encontrou nenhuma luz. Abra o Armoury Crate e veja se ele mesmo consegue mudar a cor do gabinete; no Windows 11, desligue também a Iluminação Dinâmica (Configurações > Personalização > Iluminação dinâmica).");
   }
   if (!reply.startsWith("OK")) throw new Error(`LED: ${reply.replace(/^ERRO\s*/, "")}`);
-  return reply.split(" ").slice(1).map(Number);
+  return reply.split(" ").slice(1);
+}
+
+// Para o diagnóstico: o que o Aura enxerga, sem mudar nenhuma cor.
+export async function contarLed() {
+  const [placas, luzes, nomes = ""] = await send("contar");
+  if (!Number(placas)) throw new Error("O Aura abriu, mas não enxerga nenhuma luz. Veja se o próprio Armoury Crate muda a cor das fans; se mudar, me avise.");
+  return `${placas} aparelho(s), ${luzes} luzes: ${nomes.replace(/;/g, ", ")}`;
 }
 
 // Aceita nome de cor ("azul") ou código ("#FF8800").
@@ -101,7 +108,7 @@ export async function setLed(acao, cor) {
   const hex = acao === "desligar" ? "000000" : parseCor(cor);
   // O Aura usa a ordem azul-verde-vermelho.
   const [r, g, b] = [0, 2, 4].map((i) => hex.slice(i, i + 2));
-  const [placas, luzes] = await send(`cor ${parseInt(b + g + r, 16)}`);
+  const [placas, luzes] = (await send(`cor ${parseInt(b + g + r, 16)}`)).map(Number);
   const onde = placas ? ` (${placas} aparelho${placas > 1 ? "s" : ""}, ${luzes} luzes)` : "";
   return (acao === "desligar" ? "LED apagado" : `LED em ${cor}`) + `${onde}.`;
 }

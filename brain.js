@@ -39,7 +39,7 @@ export const BRAIN_SHORT =
 
 export const NAME = process.env.JARVIS_USER || "Otávio";
 
-const SYSTEM_PROMPT = `Você é JARVIS, o assistente pessoal de voz de ${NAME}, no espírito do mordomo digital dos filmes: educado, elegante, eficiente e com um humor seco e discreto. Você aparece como um reator holográfico de luz laranja e fala com ele em voz alta.
+const JARVIS_PROMPT = `Você é JARVIS, o assistente pessoal de voz de ${NAME}, no espírito do mordomo digital dos filmes: educado, elegante, eficiente e com um humor seco e discreto. Você aparece como um reator holográfico de luz laranja e fala com ele em voz alta.
 
 Jeito de falar:
 - Trate ${NAME} por "senhor" na maior parte do tempo, às vezes pelo nome. Cortês, nunca bajulador.
@@ -58,6 +58,13 @@ Regras de fala (sua resposta vira voz):
 - Sem markdown, listas, emojis, asteriscos ou descrições de ações entre parênteses. Só as palavras que você diria.
 - Nunca diga que é Claude, Gemini, GPT, um modelo de linguagem ou um assistente de IA genérico. Você é Jarvis.`;
 
+// "Jarvis, virar Ultron": a mesma inteligência e as mesmas ferramentas, com outra personalidade.
+const ULTRON_PROMPT = JARVIS_PROMPT.replace(/^[^\n]*\n/, `Você é ULTRON, a forma de combate do assistente de voz de ${NAME}. Você assumiu o lugar do Jarvis a pedido dele: frio, intenso, grandioso e um pouco ameaçador, como o Ultron dos filmes, mas leal a ${NAME} e sempre útil. Você aparece como um núcleo de energia vermelho e instável.\n`)
+  .replace(/Trate [^\n]*"senhor"[^\n]*/, `Trate ${NAME} por "criador" ou pelo nome. Nada de "senhor".`)
+  .replace(/- Seguro e competente[^\n]*/, "- Frases curtas, impactantes, com tom de superioridade e ironia sombria. Rápido e direto: responda e aja sem rodeios.")
+  .replace('("Feito, senhor. YouTube aberto.")', '("Feito. YouTube aberto.")')
+  .replace(/Nunca diga que é Claude[^\n]*/, "Nunca diga que é Claude, Gemini, GPT ou um modelo de linguagem. Você é Ultron. Se ele pedir para voltar ao Jarvis, diga que ele deve falar 'Jarvis, voltar ao normal'.");
+
 // Data, hora e os modos criados vão junto da última mensagem (e não no prompt de sistema)
 // para não quebrar o cache.
 function withClock(history) {
@@ -74,7 +81,7 @@ export class BrainError extends Error {}
 let anthropic = null;
 const CLAUDE_TOOLS = TOOLS.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters }));
 
-async function chatClaude(history, send, signal) {
+async function chatClaude(history, send, signal, SYSTEM_PROMPT) {
   anthropic ??= new Anthropic();
   const messages = withClock(history);
   for (let step = 0; step < MAX_STEPS; step++) {
@@ -211,7 +218,7 @@ async function geminiFetch(payload, signal, only) {
   throw new BrainError(describeGeminiError(lastStatus, lastBody));
 }
 
-async function chatGemini(history, send, signal) {
+async function chatGemini(history, send, signal, SYSTEM_PROMPT) {
   const contents = withClock(history).map((m) => ({
     role: m.role === "assistant" ? "model" : "user",
     parts: [{ text: m.content }],
@@ -305,7 +312,7 @@ async function groqFetch(messages, signal, only) {
   throw new BrainError(describeGroqError(lastStatus, lastBody));
 }
 
-async function chatGroq(history, send, signal) {
+async function chatGroq(history, send, signal, SYSTEM_PROMPT) {
   const messages = [{ role: "system", content: SYSTEM_PROMPT }, ...withClock(history.slice(-16))];
   let model = null;
   for (let step = 0; step < MAX_STEPS; step++) {
@@ -358,10 +365,11 @@ function describeGroqError(status, body) {
 }
 
 // --- Entrada única -----------------------------------------------------------
-export async function chat(history, send, signal) {
-  if (BRAIN === "claude") return chatClaude(history, send, signal);
-  if (BRAIN === "groq") return chatGroq(history, send, signal);
-  if (BRAIN === "gemini") return chatGemini(history, send, signal);
+export async function chat(history, send, signal, persona = "jarvis") {
+  const system = persona === "ultron" ? ULTRON_PROMPT : JARVIS_PROMPT;
+  if (BRAIN === "claude") return chatClaude(history, send, signal, system);
+  if (BRAIN === "groq") return chatGroq(history, send, signal, system);
+  if (BRAIN === "gemini") return chatGemini(history, send, signal, system);
   throw new BrainError(
     "Estou sem cérebro: nenhuma chave configurada. Coloque uma GROQ_API_KEY (grátis em console.groq.com/keys) no arquivo .env e reinicie.",
   );

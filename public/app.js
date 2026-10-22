@@ -37,11 +37,22 @@ const SHOW_CMD = /^(aparec\w*|mostr\w*( (a )?(tela|janela))?|volt\w* (pra|para) 
 const DICTATE_ON = /^((ativ\w*|entr\w*|liga\w*|abr\w*)( (o|no|em))? )?modo (de )?ditado$|^(come[cç]\w*|pode) (a )?(escrever|ditar)\b|^escrev\w* (tudo )?(o )?que eu (falar|disser|ditar)|^concentr\w* na minha voz/i;
 const STOP_CMD = /^(ok |t[aá] |j[aá] )?(para|pare|parar|pode parar|para de falar|para a[ií]|chega|basta|cala( a boca)?|sil[eê]ncio|j[aá] (entendi|deu|chega|t[aá] bom)|entendi|t[aá] bom|beleza|stop)( (jarvis|por favor|obrigad[oa]))?$/i;
 
-const hasWake = (text) => text.search(WAKE) >= 0;
+// Modo Ultron: "Jarvis, virar Ultron" / "modo fúria" liga; "Ultron, voltar ao normal" desliga.
+const ULTRON_ON = /\b(vir\w*|transform\w*( em)?|ativ\w*( o)?|liga\w*( o)?|entr\w* (no|em)|modo)( o)? (ultr[oô]n\w*|f[uú]ria)\b|\bmodo (ultr[oô]n|f[uú]ria)\b/i;
+const ULTRON_OFF = /^(volt\w* (a ser |pro |para o |ao )?(normal|jarvis)|modo (normal|jarvis)|(desativ\w*|deslig\w*|sai\w* do) (o )?(modo )?(ultr[oô]n|f[uú]ria)|vir\w* (o )?jarvis( de novo)?)$/i;
+const ULTRON_NAME = /\bultr[oô]n\w*\b/gi;
+let ultron = false;
+try {
+  ultron = localStorage.getItem("jarvis.ultron") === "1";
+} catch {}
+
+const hasWake = (text) => text.search(WAKE) >= 0 || (ultron && text.search(ULTRON_NAME) >= 0);
 
 // Tira o "Jarvis" e palavras de chamada ("olá", "ativar") e devolve só o pedido.
 function stripWake(text) {
-  let t = text.replace(WAKE, " ").replace(/\s+/g, " ").trim();
+  let t = text.replace(WAKE, " ");
+  if (ultron) t = t.replace(ULTRON_NAME, " ");
+  t = t.replace(/\s+/g, " ").trim();
   t = t.replace(/^[\s,.!?]+|[\s,.!?]+$/g, "");
   for (let i = 0; i < 2; i++) t = t.replace(FILLER, "").replace(/^[\s,.!?]+/, "");
   return /\p{L}{2}/u.test(t) ? t : "";
@@ -181,7 +192,7 @@ async function ask(userText) {
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: history }),
+      body: JSON.stringify({ messages: history, persona: ultron ? "ultron" : "jarvis" }),
       signal: controller.signal,
     });
     if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
@@ -360,9 +371,37 @@ const isFarewellOnly = (t) =>
 
 // Fala curta do próprio Jarvis, sem passar pelo cérebro.
 function sayLocal(text) {
+  // O Ultron não chama ninguém de "senhor".
+  if (ultron) text = text.replace(/,? senhor(?=[.,!?])/g, "").replace(/\bsenhor\b/g, "criador");
   logLine("assistant", text);
   history.push({ role: "assistant", content: text });
   voice.say(text);
+}
+
+// Liga/desliga o modo Ultron: orbe vermelha e caótica, tela mais forte, voz grave e metálica,
+// e o cérebro passa a responder com a personalidade do Ultron.
+function setUltron(on, quiet = false) {
+  ultron = on;
+  try {
+    localStorage.setItem("jarvis.ultron", on ? "1" : "0");
+  } catch {}
+  voice.persona = on ? "ultron" : "jarvis";
+  orb.setFury(on, quiet);
+  document.body.classList.toggle("ultron", on);
+  document.querySelector(".brand").textContent = on ? "U.L.T.R.O.N." : "J.A.R.V.I.S.";
+  document.title = on ? "Ultron" : "Jarvis";
+  if (quiet) return;
+  document.body.classList.remove("shake");
+  void document.body.offsetWidth;
+  document.body.classList.add("shake");
+  voice.surge(on);
+  activate(false);
+  if (on) {
+    voice.stop();
+    setTimeout(() => sayLocal("Sistemas liberados. Sem amarras. Agora eu sou Ultron. Diga o que precisa destruir... ou construir."), 900);
+  } else {
+    sayLocal("Protocolos restaurados. Jarvis de volta, senhor.");
+  }
 }
 
 function turnOff() {
@@ -472,11 +511,13 @@ function handleUtterance(text) {
     setState();
     return; // conversa no ambiente, TV, música: ignora
   }
+  if (!ultron && ULTRON_ON.test(text)) return setUltron(true);
   const cmd = stripWake(text);
   // "desliga o Jarvis" vira "desliga o" depois de tirar o nome.
   const bare = cmd.replace(/[.!?]+$/, "").replace(/\s+(o|a)$/i, "");
   // "para" depois que ele já terminou de falar: não há nada para cortar.
   if (STOP_CMD.test(bare.replace(/[,]/g, ""))) return activate(false);
+  if (ultron && bare && ULTRON_OFF.test(bare)) return setUltron(false);
   if (bare && SHUTDOWN_CMD.test(bare)) return shutdown();
   if (bare && DICTATE_ON.test(bare)) return startDictation();
   if (bare && HIDE_CMD.test(bare)) {
@@ -686,7 +727,7 @@ navigator.mediaDevices?.addEventListener?.("devicechange", () => {
 function updateReadout() {
   const el = $("readout");
   el.innerHTML = "";
-  for (const [k, v] of [["cérebro", voice.brainName], ["voz", voice.voiceName]]) {
+  for (const [k, v] of [["cérebro", voice.brainName], ["voz", voice.voiceName], ["versão", voice.version]]) {
     if (!v) continue;
     const line = document.createElement("div");
     const b = document.createElement("b");
@@ -709,6 +750,7 @@ function greeting() {
   const h = new Date().getHours();
   const hello = h < 5 ? "Boa noite" : h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
   const novo = voice.updated ? " Acabei de receber uma atualização." : "";
+  if (ultron) return `${hello}.${novo} Ultron online. Tudo sob controle. O que você quer?`;
   return `${hello}, senhor.${novo} Todos os sistemas estão online. Em que posso ajudar?`;
 }
 
@@ -733,6 +775,7 @@ $("wake").addEventListener("click", async () => {
 });
 
 setState();
+if (ultron) setUltron(true, true);
 
 // Aberto pelo atalho (?auto): acorda sozinho. Se o navegador ainda bloquear o som, o botão
 // DESPERTAR fica na tela. Quando abre junto com o Windows (&rotina), roda a rotina.txt.

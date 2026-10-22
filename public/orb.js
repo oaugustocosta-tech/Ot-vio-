@@ -1,19 +1,25 @@
 // Núcleo de energia do Jarvis em 3D: uma esfera de linhas laranja entrelaçadas, raios que saem
 // do centro e faíscas em volta. Quando ele fala, a esfera estufa, as linhas tremem e os raios
 // se esticam no ritmo da voz; depois tudo volta ao lugar.
-// WebGL2 puro, sem bibliotecas. Interface: setMode(modo) e setLevel(0..1).
+// No modo Ultron (setFury), tudo fica vermelho, mais rápido e instável, com espinhos que piscam.
+// WebGL2 puro, sem bibliotecas. Interface: setMode(modo), setLevel(0..1) e setFury(ligado).
 const VERT = `#version 300 es
 in vec3 aPos;
 in vec4 aSeed; // x: semente, y: posição ao longo do raio (0 centro, 1 ponta), z: tipo, w: brilho
 uniform mat4 uMVP;
-uniform float uTime, uBreak, uEnergy, uLift, uDpr;
+uniform float uTime, uBreak, uEnergy, uLift, uDpr, uFury;
 out float vA;
 out float vKind;
 out float vT;
 vec3 wobble(vec3 p, float s) {
-  return vec3(sin(p.y * 3.1 + uTime * 1.3 + s * 11.0),
-              sin(p.z * 2.7 + uTime * 1.1 + s * 7.0),
-              sin(p.x * 3.3 + uTime * 0.9 + s * 5.0));
+  float tt = uTime * (1.0 + uFury * 2.5);
+  return vec3(sin(p.y * 3.1 + tt * 1.3 + s * 11.0),
+              sin(p.z * 2.7 + tt * 1.1 + s * 7.0),
+              sin(p.x * 3.3 + tt * 0.9 + s * 5.0));
+}
+// Ultron: espinhos que aparecem e somem várias vezes por segundo.
+float spike(float s) {
+  return uFury * step(0.9, fract(sin(s * 91.7 + floor(uTime * 9.0) * 13.1) * 43758.5));
 }
 void main() {
   float s = aSeed.x;
@@ -23,15 +29,16 @@ void main() {
   if (kind < 0.5) {
     // Linhas da esfera: respiram, tremem e estufam com a voz.
     float r = 1.0 + 0.05 * sin(uTime * 0.8 + s * 20.0) + uBreak * 0.32 * (0.35 + s);
-    p = p * r + wobble(p, s) * (0.02 + uBreak * 0.14);
+    p = p * r + wobble(p, s) * (0.02 + uBreak * 0.14 + uFury * 0.09);
+    p += wobble(p * 4.0, s * 3.0) * uFury * 0.035 + normalize(p) * spike(s) * 0.22;
   } else if (kind < 1.5) {
     // Raios: crescem e encolhem, piscam e esticam quando ele fala.
-    float len = (1.0 + 0.9 * s) * (0.55 + 0.45 * sin(uTime * (0.6 + s) + s * 30.0)) * (1.0 + uBreak * 1.1);
+    float len = (1.0 + 0.9 * s) * (0.55 + 0.45 * sin(uTime * (0.6 + s) * (1.0 + uFury * 3.0) + s * 30.0)) * (1.0 + uBreak * 1.1 + uFury * 0.5);
     p = aPos * aSeed.y * len;
-    a *= 0.55 + 0.45 * sin(uTime * (3.0 + 6.0 * s) + s * 50.0);
+    a *= 0.55 + 0.45 * sin(uTime * (3.0 + 6.0 * s) * (1.0 + uFury * 2.0) + s * 50.0);
   } else {
     // Faíscas em volta.
-    p = p * (1.0 + uBreak * 0.6 * s) + wobble(p * 2.0, s) * 0.05;
+    p = p * (1.0 + uBreak * 0.6 * s + uFury * 0.25 * s) + wobble(p * 2.0, s) * (0.05 + uFury * 0.08);
     a *= 0.45 + 0.55 * sin(uTime * (1.5 + 3.0 * s) + s * 40.0);
   }
   gl_Position = uMVP * vec4(p, 1.0);
@@ -47,19 +54,20 @@ precision mediump float;
 in float vA;
 in float vKind;
 in float vT;
+uniform highp float uFury;
 out vec4 o;
 void main() {
   vec3 col;
   float a = vA;
   if (vKind < 0.5) {
-    col = vec3(1.0, 0.5, 0.1);
+    col = mix(vec3(1.0, 0.5, 0.1), vec3(1.0, 0.07, 0.03), uFury);
   } else if (vKind < 1.5) {
-    col = mix(vec3(1.0, 0.85, 0.5), vec3(1.0, 0.38, 0.05), vT);
+    col = mix(mix(vec3(1.0, 0.85, 0.5), vec3(1.0, 0.38, 0.05), vT), mix(vec3(1.0, 0.45, 0.35), vec3(0.9, 0.02, 0.02), vT), uFury);
     a *= 1.0 - vT * 0.7;
   } else {
     float d = length(gl_PointCoord - 0.5);
     a *= smoothstep(0.5, 0.0, d);
-    col = vec3(1.0, 0.72, 0.3);
+    col = mix(vec3(1.0, 0.72, 0.3), vec3(1.0, 0.22, 0.12), uFury);
   }
   o = vec4(col * a, 1.0);
 }`;
@@ -72,14 +80,14 @@ void main() { gl_Position = vec4(P[gl_VertexID], 0.0, 1.0); }`;
 const CORE_FRAG = `#version 300 es
 precision mediump float;
 uniform vec2 uCenter;
-uniform float uRadius, uPower, uTime;
+uniform float uRadius, uPower, uTime, uFury;
 out vec4 o;
 void main() {
   float d = length(gl_FragCoord.xy - uCenter) / uRadius;
-  float flick = 0.93 + 0.07 * sin(uTime * 23.0) * sin(uTime * 7.0);
+  float flick = 0.93 + (0.07 + uFury * 0.18) * sin(uTime * (23.0 + uFury * 20.0)) * sin(uTime * 7.0);
   float hot = exp(-d * d * 40.0) * 1.6;
-  float halo = exp(-d * 4.0) * 0.45 + exp(-d * 1.3) * 0.08;
-  vec3 col = vec3(1.0, 0.9, 0.55) * hot + vec3(1.0, 0.42, 0.06) * halo;
+  float halo = exp(-d * 4.0) * 0.45 + exp(-d * 1.3) * (0.08 + uFury * 0.1);
+  vec3 col = mix(vec3(1.0, 0.9, 0.55), vec3(1.0, 0.6, 0.5), uFury) * hot + mix(vec3(1.0, 0.42, 0.06), vec3(1.0, 0.04, 0.02), uFury) * halo;
   o = vec4(col * uPower * flick, 1.0);
 }`;
 
@@ -178,8 +186,8 @@ export class JarvisOrb {
     if (!gl) throw new Error("WebGL2 indisponível");
     this.prog = this.program(VERT, FRAG);
     this.coreProg = this.program(CORE_VERT, CORE_FRAG);
-    this.u = this.uniforms(this.prog, ["uMVP", "uTime", "uBreak", "uEnergy", "uLift", "uDpr"]);
-    this.uC = this.uniforms(this.coreProg, ["uCenter", "uRadius", "uPower", "uTime"]);
+    this.u = this.uniforms(this.prog, ["uMVP", "uTime", "uBreak", "uEnergy", "uLift", "uDpr", "uFury"]);
+    this.uC = this.uniforms(this.coreProg, ["uCenter", "uRadius", "uPower", "uTime", "uFury"]);
 
     const geo = buildGeometry();
     this.lines = geo.lines;
@@ -203,6 +211,9 @@ export class JarvisOrb {
     this.lastLevel = 0;
     this.spinY = 0;
     this.spinX = 0;
+    this.fury = 0; // 0 = Jarvis, 1 = Ultron (muda aos poucos)
+    this.furyTarget = 0;
+    this.surge = 0; // explosão da transformação
     this.mx = 0;
     this.my = 0;
     addEventListener("pointermove", (e) => {
@@ -264,6 +275,13 @@ export class JarvisOrb {
     this.level = v;
   }
 
+  // Liga ou desliga o Ultron, com uma explosão de energia na troca.
+  setFury(on, instant = false) {
+    this.furyTarget = on ? 1 : 0;
+    if (instant) this.fury = this.furyTarget;
+    else this.surge = 1.6;
+  }
+
   frame(now) {
     const { gl } = this;
     const dt = Math.min(0.05, (now - this.prev) / 1000);
@@ -279,8 +297,11 @@ export class JarvisOrb {
     if (lvl - this.lastLevel > 0.2) this.pulse = 1;
     this.lastLevel = lvl;
     this.pulse *= Math.exp(-dt * 4);
-    this.spinY += dt * this.cur.speed * 0.5;
-    this.spinX += dt * this.cur.speed * 0.23;
+    this.fury += (this.furyTarget - this.fury) * (1 - Math.exp(-dt * 1.6));
+    this.surge *= Math.exp(-dt * 1.4);
+    const fast = 1 + this.fury * 1.8 + this.surge * 2;
+    this.spinY += dt * this.cur.speed * 0.5 * fast;
+    this.spinX += dt * this.cur.speed * 0.23 * fast;
 
     const w = this.canvas.width, h = this.canvas.height, aspect = w / h;
     const dist = 4.4;
@@ -289,7 +310,7 @@ export class JarvisOrb {
     const proj = perspective(fovy, aspect, 0.1, 20);
     const lift = 0.07;
     const view = mul(move(0, 0, -dist), mul(rotX(this.spinX + this.my * 0.25), rotY(this.spinY + this.mx * 0.35)));
-    const b = this.brk + this.pulse * 0.25;
+    const b = this.brk + this.pulse * 0.25 + this.surge * 0.6;
 
     gl.clear(gl.COLOR_BUFFER_BIT);
 
@@ -298,8 +319,9 @@ export class JarvisOrb {
     const pxPerUnit = h / 2 / (Math.tan(fovy / 2) * dist);
     gl.uniform2f(this.uC.uCenter, w / 2, h / 2 + lift * (h / 2));
     gl.uniform1f(this.uC.uRadius, pxPerUnit);
-    gl.uniform1f(this.uC.uPower, this.cur.core * (0.85 + lvl * 0.7 + this.pulse * 0.35));
+    gl.uniform1f(this.uC.uPower, this.cur.core * (0.85 + lvl * 0.7 + this.pulse * 0.35 + this.surge * 0.8) * (1 + this.fury * 0.2));
     gl.uniform1f(this.uC.uTime, t);
+    gl.uniform1f(this.uC.uFury, this.fury);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
     gl.useProgram(this.prog);
@@ -307,7 +329,8 @@ export class JarvisOrb {
     gl.uniformMatrix4fv(this.u.uMVP, false, mul(proj, view));
     gl.uniform1f(this.u.uTime, t);
     gl.uniform1f(this.u.uBreak, b);
-    gl.uniform1f(this.u.uEnergy, this.cur.energy);
+    gl.uniform1f(this.u.uEnergy, this.cur.energy * (1 + this.fury * 0.25 + this.surge * 0.4));
+    gl.uniform1f(this.u.uFury, this.fury);
     gl.uniform1f(this.u.uLift, lift);
     gl.uniform1f(this.u.uDpr, this.dpr);
     gl.drawArrays(gl.LINES, 0, this.lines);

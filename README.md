@@ -32,6 +32,7 @@ Suas coisas (chaves, modos, conexão do Spotify e a rotina) ficam numa pasta sep
 - **Escrever:** "Jarvis, escreve meu nome" escreve na janela que está na frente (ou "escreve ... no bloco de notas"). Para ditar um texto longo, diga **"Jarvis, modo ditado"** (ou "escreve o que eu falar"): tudo que você falar vai sendo escrito, sem precisar dizer "Jarvis". Fale "vírgula", "ponto final", "interrogação", "nova linha" ou "novo parágrafo" para pontuar. Para parar, **"Jarvis, parar ditado"**.
 - **Minimizado ele continua ouvindo.** Só não feche a janela. "Jarvis, se esconde" minimiza; "Jarvis, aparece" traz de volta. **F11** sai da tela cheia.
 - **"Jarvis, para"** (ou "chega", "já entendi", "para de falar") enquanto ele fala: corta a fala na hora. Sem o nome também funciona, desde que a palavra não esteja na frase que ele está dizendo; com o nome é garantido.
+- **Modo Ultron:** "Jarvis, virar Ultron" (ou "modo fúria"). A tela e a orbe ficam vermelhas e instáveis, a voz fica grave e metálica e ele responde com outra personalidade: frio, intenso, mas ainda faz tudo que o Jarvis faz. Nesse modo ele também atende por "Ultron". Para voltar: **"Ultron, voltar ao normal"** (ou "modo Jarvis"). Ele lembra o modo quando você abre de novo.
 - **Clicar no reator** também chama. Clicar enquanto ele fala corta a fala.
 - **Chat** (canto superior direito): mostra a conversa escrita e um campo para digitar. Fica escondido por padrão.
 - Exemplos: "abre o YouTube", "fecha o Discord", "toca lofi na Alexa", "LED azul", "modo game", "abre o Telegram", "pesquisa a previsão do tempo de amanhã", "aumenta o volume", "pausa a música", "bloqueia o computador".
@@ -54,6 +55,7 @@ Se a cor não mudar:
 - Veja se o próprio Armoury Crate (aba Aura Sync) consegue mudar a cor do gabinete. Se nem ele consegue, o Jarvis também não.
 - No Windows 11, a **Iluminação Dinâmica** pode tomar o controle dos LEDs: em Configurações > Personalização > Iluminação dinâmica, desligue "Usar a Iluminação Dinâmica nos meus dispositivos" (ou coloque o Armoury Crate em primeiro na lista).
 - Não precisa abrir o Aura Creator: ele é só para criar efeitos.
+- Rode o **Diagnóstico** (em Ajustes): a linha "LED (Aura)" diz quantos aparelhos e luzes o kit do Aura enxerga. Se der 0, o Armoury Crate não está expondo os fans para outros programas.
 
 ## A rotina de quando o PC liga
 
@@ -70,7 +72,7 @@ Quando o Jarvis abre junto com o Windows, ele segue o arquivo `rotina.txt` da pa
 ## Ajustes e diagnóstico
 
 No botão **Ajustes** (canto superior direito):
-- **Rodar diagnóstico** testa a internet, o cérebro, cada voz e o Spotify, e mostra em português o que falhou e por quê (internet lenta, antivírus interceptando a conexão, chave recusada...). Se algo der errado, é a primeira coisa a olhar.
+- **Rodar diagnóstico** testa a versão do Jarvis (avisa se falta atualizar), a internet, o cérebro, cada voz, o Spotify, as janelas e monitores que ele enxerga e o LED, e mostra em português o que falhou e por quê (internet lenta, antivírus interceptando a conexão, chave recusada...). Se algo der errado, é a primeira coisa a olhar.
 - **Chaves e voz**: cole uma chave nova (Groq, ElevenLabs, Azure) ou troque a voz da ElevenLabs sem abrir arquivo nenhum. Ao salvar, o Jarvis reinicia sozinho.
 - **Som**: por onde sai a voz dele.
 
@@ -79,6 +81,8 @@ Se o antivírus vigia conexões HTTPS (Kaspersky, Avast, ESET e outros fazem iss
 ## A voz
 
 Por padrão, o Jarvis fala com as vozes neurais da Microsoft (as mesmas do "Ler em voz alta" do Edge), que são grátis e soam humanas. Para trocar de voz, coloque `JARVIS_VOICE` no `.env` (por exemplo `pt-BR-FranciscaNeural`). Esse serviço não é oficial: se ele cair, o Jarvis usa a voz do navegador até voltar. Para uma voz ainda mais realista, coloque uma `ELEVENLABS_API_KEY`. O plano grátis da ElevenLabs dá uns 20 minutos de fala por mês; quando acabar, o Jarvis volta sozinho para a voz da Microsoft. A voz da ElevenLabs é escolhida com `JARVIS_VOZ`: `daniel` (britânico e sério, o padrão, o mais perto do mordomo do filme), `george`, `brian`, `alice` ou `lily` (estas duas femininas). O instalador pergunta qual você quer. No canto superior esquerdo da tela aparece qual cérebro e qual voz estão em uso. Se a ElevenLabs recusar (chave sem permissão de Text to Speech, créditos acabados, conta bloqueada), o Jarvis mostra o motivo na tela e fala com a voz reserva.
+
+Frases curtas que ele fala muito ("Feito, senhor.", o bom-dia) ficam guardadas no PC depois da primeira vez, então saem na hora e com a mesma voz mesmo com a internet lenta. No modo Ultron ele usa outra voz da ElevenLabs (Callum, grave e rouca; troque com `ULTRON_VOICE_ID` no `.env`) com um efeito metálico feito no próprio PC; sem ElevenLabs, usa a voz da Microsoft mais grave.
 
 Ordem das vozes: ElevenLabs (se tiver chave) → **Azure Speech** (se tiver chave) → Microsoft grátis → voz do navegador. A Azure é a voz oficial da Microsoft: o plano grátis (F0) dá 500 mil caracteres por mês, umas 9 horas de fala, e não cai como o serviço não oficial. Para usar, crie um recurso **Speech** no plano **Free F0** em [portal.azure.com](https://portal.azure.com/#create/Microsoft.CognitiveServicesSpeechServices) (pede cartão só para confirmar a conta; o F0 não cobra) e cole a "Chave 1" e a região em Ajustes.
 

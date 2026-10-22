@@ -31,21 +31,36 @@ function copiar(de, para) {
 
 const ler = (arquivo) => (fs.existsSync(arquivo) ? fs.readFileSync(arquivo, "utf8") : "");
 
+// A versão instalada (gravada na última atualização).
+export const versaoLocal = () => ler(dado("versao.txt")).trim();
+
+// A versão mais nova no GitHub, ou null sem internet.
+export async function versaoNova(espera = 15_000) {
+  try {
+    const r = await fetch(`https://api.github.com/repos/${REPO}/commits/${RAMO}`, {
+      headers: { Accept: "application/vnd.github+json", "User-Agent": "jarvis" },
+      signal: AbortSignal.timeout(espera),
+    });
+    if (!r.ok) return null;
+    const { sha, commit } = await r.json();
+    return /^[0-9a-f]{40}$/.test(sha) ? { sha, commit } : null;
+  } catch {
+    return null;
+  }
+}
+
 async function atualizar() {
   // Quem programa (pasta com .git) atualiza pelo git, não por aqui.
   if (fs.existsSync(path.join(here, ".git"))) return;
 
-  const r = await fetch(`https://api.github.com/repos/${REPO}/commits/${RAMO}`, {
-    headers: { Accept: "application/vnd.github+json", "User-Agent": "jarvis" },
-    signal: AbortSignal.timeout(6_000),
-  });
-  if (!r.ok) throw new Error(`GitHub respondeu ${r.status}`);
-  const { sha, commit } = await r.json();
-  if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error("versão inválida");
-  if (ler(dado("versao.txt")).trim() === sha) return;
+  // Internet lenta: espera bastante antes de desistir (o atalho espera até 3 minutos).
+  const nova = await versaoNova(30_000);
+  if (!nova) throw new Error("não consegui ver a versão no GitHub");
+  const { sha, commit } = nova;
+  if (versaoLocal() === sha) return;
 
   console.log(`Baixando a versão ${sha.slice(0, 7)}...`);
-  const zip = await fetch(`https://codeload.github.com/${REPO}/tar.gz/${sha}`, { signal: AbortSignal.timeout(60_000) });
+  const zip = await fetch(`https://codeload.github.com/${REPO}/tar.gz/${sha}`, { signal: AbortSignal.timeout(120_000) });
   if (!zip.ok) throw new Error(`download falhou (${zip.status})`);
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-"));
   try {
@@ -77,8 +92,11 @@ async function atualizar() {
   console.log(`Atualizado: ${resumo}`);
 }
 
-try {
-  await atualizar();
-} catch (err) {
-  console.error(`Sem atualização agora: ${err.message}`);
+// Só atualiza quando rodado direto (node atualizar.js), não quando o servidor importa as funções.
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    await atualizar();
+  } catch (err) {
+    console.error(`Sem atualização agora: ${err.message}`);
+  }
 }

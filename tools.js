@@ -70,7 +70,7 @@ const ACOES_JANELA = ["minimizar", "maximizar", "restaurar", "trazer", "mover_mo
 
 const ehJarvis = (j) => j.processo === "msedge" && /^JARVIS\b/.test(j.titulo);
 
-async function listarJanelas() {
+export async function listarJanelas() {
   const d = JSON.parse(await runPs("janelas.ps1", ["-Acao", "listar"]));
   const janelas = (Array.isArray(d.janelas) ? d.janelas : [d.janelas]).filter(Boolean);
   // Fora da lista: o próprio Jarvis e a área de trabalho.
