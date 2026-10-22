@@ -1,12 +1,10 @@
 // Modos criados pelo usuário na tela "Modos" (por exemplo "trabalho" ou "game"). Cada modo é uma
 // lista de ações: abrir site, abrir programa, fechar programa. Ficam salvos em modos.json.
 import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { dado } from "./dados.js";
 import { normalize, validAppId } from "./apps.js";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const ARQUIVO = path.join(here, "modos.json");
+const ARQUIVO = dado("modos.json");
 
 export function loadModes() {
   try {

@@ -48,11 +48,11 @@ async function elevenLabs(text, tentativa = 0) {
         language_code: "pt",
         voice_settings: { stability: 0.6, similarity_boost: 0.8, speed: 1.05 },
       }),
-      signal: AbortSignal.timeout(8_000),
+      signal: AbortSignal.timeout(10_000),
     });
   } catch (err) {
     console.error(`  ElevenLabs: ${err.message}`);
-    markDown("eleven", 60_000);
+    markDown("eleven", 15_000); // falha de rede costuma passar rápido
     throw new Error("Não consegui falar com a ElevenLabs (internet lenta ou fora do ar).");
   }
   if (!res.ok) {
@@ -117,7 +117,7 @@ async function edgeTts(text) {
       edge?.close();
     } catch {}
     edge = null;
-    markDown("edge", 2 * 60_000);
+    markDown("edge", 30_000);
     console.error(`  Microsoft: ${err.message}`);
     throw new Error("A voz grátis da Microsoft também não respondeu.");
   }

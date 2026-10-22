@@ -249,39 +249,19 @@ let retryDelay = 300;
 let listenTimer = null;
 let ignoreUntil = 0; // logo depois de cortar a fala, ignora o resto do "para de falar"
 
-// Áudio escolhido no painel Áudio (vazio = o padrão do Windows).
-const audio = { mic: "", out: "" };
+// Saída de som escolhida no painel Áudio (vazio = o padrão do Windows).
+const audio = { out: "" };
 try {
-  Object.assign(audio, JSON.parse(localStorage.getItem("jarvis.audio") || "{}"));
+  audio.out = JSON.parse(localStorage.getItem("jarvis.audio") || "{}").out || "";
 } catch {}
-let micTrack = null;
-
-// Microfone escolhido. O reconhecimento de voz usa o padrão do Windows, a não ser que o
-// navegador aceite receber o microfone pronto (Edge e Chrome novos aceitam).
-async function chosenMic() {
-  if (!audio.mic) return null;
-  if (micTrack?.readyState === "live") return micTrack;
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { deviceId: { exact: audio.mic }, echoCancellation: true, noiseSuppression: true },
-    });
-    micTrack = stream.getAudioTracks()[0];
-  } catch {
-    micTrack = null;
-    notice("Não achei o microfone escolhido. Usando o padrão do Windows.");
-  }
-  return micTrack;
-}
 
 function listenSoon(delay = 250) {
   clearTimeout(listenTimer);
   listenTimer = setTimeout(startListening, delay);
 }
 
-async function startListening() {
+function startListening() {
   if (!Recognition || !micAllowed || recogOn) return;
-  recogOn = true; // reservado enquanto prepara o microfone
-  const track = await chosenMic();
   recog = new Recognition();
   recog.lang = "pt-BR";
   recog.continuous = true;
@@ -308,15 +288,9 @@ async function startListening() {
     listenSoon(retryDelay);
   };
   try {
-    if (track) {
-      try {
-        recog.start(track);
-      } catch {
-        recog.start(); // navegador sem suporte: microfone padrão
-      }
-    } else recog.start();
+    recog.start();
+    recogOn = true;
   } catch {
-    recogOn = false;
     listenSoon(1000);
   }
 }
@@ -487,7 +461,9 @@ try {
 } catch {}
 initModes();
 
-// --- Painel Áudio: por onde ele ouve e por onde ele fala --------------------------
+// --- Painel Áudio: por onde sai a voz dele ------------------------------------------
+// O microfone não dá para escolher aqui: o reconhecimento de voz do Edge sempre usa o
+// microfone padrão do Windows (Configurações > Sistema > Som > Entrada).
 function audioMsg(text, ok = true) {
   $("audioMsg").textContent = text;
   $("audioMsg").classList.toggle("ok", ok);
@@ -497,23 +473,22 @@ async function fillDevices() {
   if (!navigator.mediaDevices?.enumerateDevices) return;
   let devices = await navigator.mediaDevices.enumerateDevices();
   // Sem permissão do microfone o navegador esconde os nomes: pede uma vez.
-  if (devices.some((d) => d.kind === "audioinput" && !d.label)) {
+  if (devices.some((d) => !d.label)) {
     try {
       const s = await navigator.mediaDevices.getUserMedia({ audio: true });
       s.getTracks().forEach((t) => t.stop());
       devices = await navigator.mediaDevices.enumerateDevices();
     } catch {}
   }
-  for (const [sel, kind, key] of [[$("micSel"), "audioinput", "mic"], [$("outSel"), "audiooutput", "out"]]) {
-    sel.innerHTML = "";
-    sel.append(new Option("Padrão do Windows", ""));
-    for (const d of devices) {
-      if (d.kind !== kind || d.deviceId === "default" || d.deviceId === "communications") continue;
-      sel.append(new Option(d.label || "Dispositivo sem nome", d.deviceId));
-    }
-    sel.value = [...sel.options].some((o) => o.value === audio[key]) ? audio[key] : "";
+  const sel = $("outSel");
+  sel.innerHTML = "";
+  sel.append(new Option("Padrão do Windows", ""));
+  for (const d of devices) {
+    if (d.kind !== "audiooutput" || d.deviceId === "default" || d.deviceId === "communications") continue;
+    sel.append(new Option(d.label || "Dispositivo sem nome", d.deviceId));
   }
-  $("outSel").disabled = !voice.ctx?.setSinkId;
+  sel.value = [...sel.options].some((o) => o.value === audio.out) ? audio.out : "";
+  sel.disabled = !voice.ctx?.setSinkId;
 }
 
 function saveAudio() {
@@ -531,14 +506,6 @@ async function applyOutput() {
   }
 }
 
-$("micSel").addEventListener("change", () => {
-  audio.mic = $("micSel").value;
-  saveAudio();
-  micTrack?.stop();
-  micTrack = null;
-  restartListening();
-  audioMsg('Microfone trocado. Diga "Jarvis" para testar.');
-});
 $("outSel").addEventListener("change", async () => {
   audio.out = $("outSel").value;
   saveAudio();
@@ -585,13 +552,15 @@ voice.onVoiceError = (why) => {
 function greeting() {
   const h = new Date().getHours();
   const hello = h < 5 ? "Boa noite" : h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
-  return `${hello}, senhor. Todos os sistemas estão online. Em que posso ajudar?`;
+  const novo = voice.updated ? " Acabei de receber uma atualização." : "";
+  return `${hello}, senhor.${novo} Todos os sistemas estão online. Em que posso ajudar?`;
 }
 
 function wake() {
   $("boot").classList.add("gone");
   updateReadout();
   if (!Recognition) notice("Este navegador não reconhece voz. Use o Microsoft Edge, ou abra o chat para digitar.");
+  else if (voice.updated) notice(`Atualizado: ${voice.updated.resumo || voice.updated.versao}`, 12_000);
   const hello = greeting();
   logLine("assistant", hello);
   history.push({ role: "user", content: `(${voice.userName || "Otávio"} acabou de abrir o Jarvis.)` }, { role: "assistant", content: hello });

@@ -1,3 +1,4 @@
+import { DADOS, dado } from "./dados.js"; // primeiro: carrega as chaves do .env
 import http from "node:http";
 import fs from "node:fs";
 import { runPs } from "./windows.js";
@@ -146,6 +147,20 @@ async function handleModes(req, res) {
   }
 }
 
+// Se o atalho acabou de atualizar o Jarvis (atualizar.js), avisa uma vez na tela.
+let novidadeLida = null;
+function novidade() {
+  if (novidadeLida === null) {
+    try {
+      novidadeLida = JSON.parse(fs.readFileSync(dado("atualizado.json"), "utf8"));
+      fs.rmSync(dado("atualizado.json"));
+    } catch {
+      novidadeLida = false;
+    }
+  }
+  return novidadeLida || null;
+}
+
 // "Jarvis, desligar": fecha a janela dele no Edge (o perfil JarvisEdge) e encerra o servidor.
 function desligar() {
   console.log("  Desligando a pedido do usuário.");
@@ -221,9 +236,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (req.method === "GET" && req.url === "/api/config") {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ neuralVoice: SERVER_VOICE, brain: BRAIN_SHORT, name: NAME }));
-      return;
+      return sendJson(res, 200, { neuralVoice: SERVER_VOICE, brain: BRAIN_SHORT, name: NAME, atualizado: novidade() });
     }
     if (req.method === "GET") return serveStatic(req, res);
     res.writeHead(405).end();
@@ -238,5 +251,6 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`\n  JARVIS online → http://127.0.0.1:${PORT}`);
   console.log(`  Cérebro: ${BRAIN_LABEL}`);
-  console.log(`  Voz: ${VOICE_LABEL}\n`);
+  console.log(`  Voz: ${VOICE_LABEL}`);
+  console.log(`  Seus dados: ${DADOS}\n`);
 });

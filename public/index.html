@@ -22,7 +22,7 @@
 
     <nav class="panels">
       <button id="modesToggle" class="ghost" aria-pressed="false" title="Criar modos como trabalho e game">Modos</button>
-      <button id="audioToggle" class="ghost" aria-pressed="false" title="Escolher microfone e saída de som">Áudio</button>
+      <button id="audioToggle" class="ghost" aria-pressed="false" title="Escolher por onde sai a voz do Jarvis">Áudio</button>
       <button id="chatToggle" class="ghost" aria-pressed="false" title="Mostrar a conversa escrita">Chat</button>
     </nav>
     <aside class="chatbox" aria-label="Conversa escrita">
@@ -71,11 +71,12 @@
 
     <aside class="audiobox" aria-label="Áudio">
       <h2>Áudio</h2>
-      <label>Microfone (onde você fala)<select id="micSel"></select></label>
       <label>Saída da voz do Jarvis<select id="outSel"></select></label>
       <div class="row"><button type="button" id="audioTest">Testar voz</button></div>
       <p id="audioMsg" class="modemsg" role="status"></p>
-      <p class="hint">Vale só para o Jarvis: o resto do computador continua no som que estiver no Windows. Para cortar a fala dele, diga "Jarvis, para" (ou "chega", "já entendi").</p>
+      <p class="hint">Vale só para o Jarvis: o resto do computador continua no som que estiver no Windows. Se a internet falhar e ele usar a voz reserva, ela sai no som padrão do Windows.</p>
+      <p class="hint">Microfone: o Edge sempre ouve pelo microfone padrão do Windows. Para usar o do headset, vá em Configurações &gt; Sistema &gt; Som &gt; Entrada e escolha o headset. Isso muda só o microfone; o som continua saindo onde já está.</p>
+      <p class="hint">Para cortar a fala dele, diga "Jarvis, para" (ou "chega", "já entendi").</p>
     </aside>
 
     <div id="toast" class="toast" role="status"></div>

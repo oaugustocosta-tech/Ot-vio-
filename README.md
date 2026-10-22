@@ -15,6 +15,12 @@ Seu assistente pessoal de voz, no estilo do Jarvis dos filmes. Ele aparece como 
 
 Pronto. Ao ligar o PC, ele abre em tela cheia, diz "Bom dia, senhor" e roda a sua rotina. Se o navegador ainda segurar o som, aparece o botão **Despertar**. Clique nele uma vez.
 
+### Atualizações e seus dados
+
+Você só baixa o ZIP uma vez. Toda vez que o Jarvis abre pelo atalho, ele confere se tem versão nova no GitHub e, se tiver, se atualiza sozinho antes de abrir (e avisa na tela). Sem internet, ele só abre a versão que já tem. Para pegar uma atualização na hora, diga "Jarvis, desligar" e abra pelo atalho de novo.
+
+Suas coisas (chaves, modos, conexão do Spotify e a rotina) ficam numa pasta separada, `%APPDATA%\Jarvis` (cole isso na barra do Explorador de Arquivos para abrir). As atualizações nunca mexem nela. Se você já tinha extraído o Jarvis em outra pasta antes, o `instalar.bat` procura essas cópias antigas (em Downloads, Área de Trabalho e Documentos) e traz os modos, o Spotify e as chaves que achar.
+
 ## Como usar
 
 - **Diga "Jarvis"** e o pedido, numa frase só: "Jarvis, abre o YouTube". Ou só "Jarvis" (ou "ativar Jarvis"), espere o bipe e fale.
@@ -30,13 +36,13 @@ Pronto. Ao ligar o PC, ele abre em tela cheia, diz "Bom dia, senhor" e roda a su
 
 ## Modos (trabalho, game...)
 
-No botão **Modos** (canto superior direito) você cria seus próprios modos sem programar: dê um nome (por exemplo `trabalho`), adicione o que ele deve fazer (abrir um site, abrir qualquer programa instalado, fechar um programa) e clique em **Salvar modo**. Depois é só dizer "Jarvis, modo trabalho". O botão **Testar** roda o modo na hora. Os modos ficam salvos no arquivo `modos.json` da pasta e não se perdem quando você atualiza o Jarvis.
+No botão **Modos** (canto superior direito) você cria seus próprios modos sem programar: dê um nome (por exemplo `trabalho`), adicione o que ele deve fazer (abrir um site, abrir qualquer programa instalado, fechar um programa) e clique em **Salvar modo**. Depois é só dizer "Jarvis, modo trabalho". O botão **Testar** roda o modo na hora. Os modos ficam salvos em `%APPDATA%\Jarvis\modos.json` e não se perdem quando o Jarvis se atualiza.
 
 Ele também abre qualquer programa do menu Iniciar pelo nome: "Jarvis, abre o Photoshop".
 
 ## Spotify (no PC ou na Alexa)
 
-Com Spotify **Premium**, o Jarvis toca músicas, artistas e playlists e controla o player: "Jarvis, toca Back in Black", "Jarvis, toca lofi na Alexa", "Jarvis, passa a música para o PC", "Jarvis, volume 30". A caixinha Echo da Alexa aparece no Spotify como um aparelho, então ele toca nela também. Para ligar, abra **Modos** e siga os 5 passos do quadro Spotify (criar um app grátis no painel de desenvolvedor do Spotify, colar o Client ID e clicar em Conectar). A conexão fica salva em `spotify.json`.
+Com Spotify **Premium**, o Jarvis toca músicas, artistas e playlists e controla o player: "Jarvis, toca Back in Black", "Jarvis, toca lofi na Alexa", "Jarvis, passa a música para o PC", "Jarvis, volume 30". A caixinha Echo da Alexa aparece no Spotify como um aparelho, então ele toca nela também. Para ligar, abra **Modos** e siga os 5 passos do quadro Spotify (criar um app grátis no painel de desenvolvedor do Spotify, colar o Client ID e clicar em Conectar). A conexão fica salva em `%APPDATA%\Jarvis\spotify.json`.
 
 ## LED do PC (ASUS Aura / Armoury Crate)
 
@@ -49,7 +55,7 @@ Se a cor não mudar:
 
 ## A rotina de quando o PC liga
 
-Quando o Jarvis abre junto com o Windows, ele segue o arquivo `rotina.txt` da pasta dele (criado na primeira vez a partir do `rotina.exemplo.txt`). Abra no Bloco de Notas: cada linha é uma ação, como `fechar discord`, `abrir youtube.com`, `abrir whatsapp` ou `modo trabalho`. Linhas com `#` no começo ficam desligadas. Por padrão ele só fecha o Discord.
+Quando o Jarvis abre junto com o Windows, ele segue o arquivo `rotina.txt` da pasta `%APPDATA%\Jarvis` (criado na primeira vez a partir do `rotina.exemplo.txt`). Abra no Bloco de Notas: cada linha é uma ação, como `fechar discord`, `abrir youtube.com`, `abrir whatsapp` ou `modo trabalho`. Linhas com `#` no começo ficam desligadas. Por padrão ele só fecha o Discord.
 
 ## O cérebro
 
@@ -67,7 +73,9 @@ Por padrão, o Jarvis fala com as vozes neurais da Microsoft (as mesmas do "Ler 
 
 Qualquer microfone funciona: o do headset, o de uma webcam, ou o embutido de um notebook. O reconhecimento de voz é o do próprio Edge (serviço da Microsoft), então o microfone fica aberto o tempo todo enquanto o Jarvis estiver rodando, mas ele só age quando ouve o nome dele. Enquanto fala, ele só aceita "para", para não obedecer à própria voz saindo na caixa de som.
 
-No botão **Áudio** (canto superior direito) dá para escolher, só para o Jarvis, o microfone (por exemplo o do headset) e por onde sai a voz dele (por exemplo a soundbar), sem mexer no som do Windows. A escolha fica salva. Se o Edge for antigo e não aceitar o microfone escolhido, ele usa o microfone padrão do Windows. A voz reserva do navegador (a que só aparece quando as outras falham) sempre sai no som padrão do Windows.
+No botão **Áudio** (canto superior direito) dá para escolher, só para o Jarvis, por onde sai a voz dele (por exemplo a soundbar), sem mexer no som do Windows. A escolha fica salva. A voz reserva do navegador (a que só aparece quando as outras falham, por exemplo com a internet ruim) sempre sai no som padrão do Windows.
+
+O microfone não dá para escolher dentro do Jarvis: o reconhecimento de voz do Edge sempre usa o microfone padrão do Windows. Para usar o do headset, vá em Configurações > Sistema > Som > **Entrada** e escolha o headset. Isso muda só o microfone; o som continua saindo onde já estava.
 
 ## Para quem programa
 
@@ -77,8 +85,12 @@ cp .env.example .env      # coloque GROQ_API_KEY (ou GEMINI_API_KEY / ANTHROPIC_
 npm start                 # http://127.0.0.1:3000
 ```
 
+Na primeira vez, o `.env` da pasta é copiado para a pasta de dados (`%APPDATA%\Jarvis` no Windows, `~/.jarvis` nos outros; `JARVIS_DADOS` muda isso), e de lá em diante vale o de lá. O `atualizar.js` não faz nada numa pasta com `.git`.
+
 ```
 server.js         servidor HTTP: serve o app, faz streaming das respostas e da voz neural
+dados.js          pasta de dados do usuário (.env, modos, Spotify, rotina) fora da pasta do programa
+atualizar.js      atualização automática pelo GitHub, rodada pelo atalho antes de abrir
 brain.js          cérebro (Claude, Groq ou Gemini), personalidade e o laço de ferramentas
 speech.js         voz gerada no servidor (Microsoft neural grátis ou ElevenLabs)
 tools.js          ações no computador; para incluir um programa, edite PROGRAMAS e FECHAVEIS

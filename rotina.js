@@ -2,10 +2,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { dado } from "./dados.js";
 import { PROGRAMAS, FECHAVEIS, runTool } from "./tools.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const ARQUIVO = path.join(here, "rotina.txt");
+const ARQUIVO = dado("rotina.txt");
 const MODELO = path.join(here, "rotina.exemplo.txt");
 
 function lerPassos() {
