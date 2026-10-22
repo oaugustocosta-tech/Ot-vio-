@@ -1,10 +1,10 @@
 :root {
-  --void: #04050c;
-  --ink: #e6e9ff;
-  --muted: #8a90b8;
-  --glow: #7d8cff;
-  --glass: rgba(20, 24, 48, 0.55);
-  --line: rgba(140, 150, 230, 0.22);
+  --void: #050302;
+  --ink: #ffe9cf;
+  --muted: #b08a62;
+  --glow: #ff8a1f;
+  --glass: rgba(40, 20, 6, 0.55);
+  --line: rgba(255, 150, 60, 0.25);
   --font: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
   --mono: "Cascadia Mono", Consolas, ui-monospace, Menlo, monospace;
   color-scheme: dark;
@@ -37,12 +37,12 @@ html, body {
   align-items: center;
   padding: 20px 24px;
 }
-.brand { font-weight: 300; letter-spacing: 0.5em; font-size: 15px; }
+.brand { font-weight: 300; letter-spacing: 0.45em; font-size: 15px; color: var(--glow); text-shadow: 0 0 12px rgba(255, 138, 31, 0.5); }
 .status {
   display: flex; align-items: center; gap: 10px;
   color: var(--muted); font-family: var(--mono); font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase;
 }
-.status i { width: 7px; height: 7px; border-radius: 50%; background: #3a3f5c; transition: background 0.3s, box-shadow 0.3s; }
+.status i { width: 7px; height: 7px; border-radius: 50%; background: #4a3020; transition: background 0.3s, box-shadow 0.3s; }
 .status.on i { background: var(--glow); box-shadow: 0 0 10px var(--glow); }
 .status.pulse i { animation: pulse 0.8s infinite alternate; }
 @keyframes pulse { to { opacity: 0.3; } }
@@ -143,7 +143,7 @@ button:focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; }
 .boot {
   position: fixed; inset: 0;
   display: grid; place-items: center;
-  background: radial-gradient(circle, rgba(10, 12, 30, 0.6), rgba(2, 3, 8, 0.96));
+  background: radial-gradient(circle, rgba(30, 14, 4, 0.6), rgba(5, 3, 2, 0.97));
   z-index: 10;
   transition: opacity 0.8s;
 }
@@ -154,7 +154,8 @@ button:focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; }
   font-weight: 200;
   letter-spacing: 0.4em;
   margin-right: -0.4em;
-  text-shadow: 0 0 40px rgba(125, 140, 255, 0.5);
+  color: var(--glow);
+  text-shadow: 0 0 40px rgba(255, 138, 31, 0.6);
 }
 .boot button { font-size: 15px; padding: 13px 36px; background: var(--ink); color: var(--void); }
 .boot small { color: var(--muted); font-size: 12px; }
@@ -168,3 +169,23 @@ button:focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) {
   .status.pulse i { animation: none; }
 }
+
+/* Moldura de HUD: cantos, barras e leitura de sistema. */
+.frame { position: fixed; inset: 12px; pointer-events: none; }
+.frame .c { position: absolute; width: 34px; height: 34px; border: 0 solid var(--glow); opacity: 0.7; }
+.frame .tl { top: 0; left: 0; border-top-width: 2px; border-left-width: 2px; }
+.frame .tr { top: 0; right: 0; border-top-width: 2px; border-right-width: 2px; }
+.frame .bl { bottom: 0; left: 0; border-bottom-width: 2px; border-left-width: 2px; }
+.frame .br { bottom: 0; right: 0; border-bottom-width: 2px; border-right-width: 2px; }
+.frame .bar { position: absolute; background: linear-gradient(90deg, transparent, var(--line), transparent); }
+.frame .top { top: 46px; left: 18%; right: 18%; height: 1px; }
+.frame .left, .frame .right { top: 22%; bottom: 22%; width: 1px; background: linear-gradient(transparent, var(--line), transparent); }
+.frame .left { left: 22px; }
+.frame .right { right: 22px; }
+.readout {
+  position: fixed; left: 28px; top: 62px;
+  font-family: var(--mono); font-size: 10px; line-height: 1.7; letter-spacing: 0.14em;
+  color: var(--muted); text-transform: uppercase; pointer-events: none;
+}
+.readout b { color: var(--glow); font-weight: 400; }
+@media (max-width: 600px) { .readout { display: none; } }

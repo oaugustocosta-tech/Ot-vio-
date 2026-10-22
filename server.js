@@ -102,8 +102,8 @@ async function handleTts(req, res) {
     return;
   }
   try {
-    const audio = await synthesize(text);
-    res.writeHead(200, { "Content-Type": "audio/mpeg" });
+    const { audio, voice } = await synthesize(text);
+    res.writeHead(200, { "Content-Type": "audio/mpeg", "X-Jarvis-Voice": voice });
     res.end(audio);
   } catch (err) {
     // O navegador cai para a voz dele quando recebe erro aqui.
@@ -118,7 +118,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && req.url === "/api/tts") return await handleTts(req, res);
     if (req.method === "GET" && req.url === "/api/config") {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ neuralVoice: SERVER_VOICE, brain: BRAIN, name: NAME }));
+      res.end(JSON.stringify({ neuralVoice: SERVER_VOICE, brain: { claude: "Claude", groq: "Groq", gemini: "Gemini", none: "nenhum" }[BRAIN], name: NAME }));
       return;
     }
     if (req.method === "GET") return serveStatic(req, res);
@@ -131,7 +131,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`\n  ULTRON online → http://localhost:${PORT}`);
+  console.log(`\n  JARVIS online → http://localhost:${PORT}`);
   console.log(`  Cérebro: ${BRAIN_LABEL}`);
   console.log(`  Voz: ${VOICE_LABEL}\n`);
 });

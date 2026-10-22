@@ -3,15 +3,20 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>ULTRON</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%226%22 fill=%22%237d8cff%22/%3E%3C/svg%3E" />
+    <title>JARVIS</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%226%22 fill=%22%23ff8a1f%22/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <canvas id="scene"></canvas>
+    <div class="frame" aria-hidden="true">
+      <i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
+      <i class="bar top"></i><i class="bar left"></i><i class="bar right"></i>
+    </div>
+    <div class="readout" id="readout" aria-live="off"></div>
 
     <header class="hud">
-      <div class="brand">ULTRON</div>
+      <div class="brand">J.A.R.V.I.S.</div>
       <div class="status"><i id="statusDot"></i><span id="statusText">dormindo</span></div>
     </header>
 
@@ -24,7 +29,7 @@
       <button type="button" id="mic" class="mic" title="Falar">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2Z"/></svg>
       </button>
-      <input id="text" autocomplete="off" placeholder="Fale ou digite para o Ultron…" />
+      <input id="text" autocomplete="off" placeholder="Fale ou digite para o Jarvis…" />
       <label class="toggle" title="Depois que ele responder, volta a ouvir sozinho">
         <input type="checkbox" id="handsFree" checked />
         <span>Mãos livres</span>
@@ -34,7 +39,7 @@
 
     <div id="boot" class="boot">
       <div class="boot-inner">
-        <div class="boot-title">ULTRON</div>
+        <div class="boot-title">J.A.R.V.I.S.</div>
         <button id="wake">Despertar</button>
         <small>Use o Microsoft Edge ou o Chrome para conversar por voz.</small>
       </div>

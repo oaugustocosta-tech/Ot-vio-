@@ -1,4 +1,4 @@
-// Voz do Ultron.
+// Voz do Jarvis.
 // - Com ELEVENLABS_API_KEY no servidor: voz neural da ElevenLabs, tocada pelo Web Audio
 //   (assim a orbe acompanha o volume real da fala).
 // - Sem chave: voz do navegador. No Microsoft Edge as vozes "Natural" (Antonio, Francisca...)
@@ -7,13 +7,15 @@
 // Ordem de preferência das vozes do navegador.
 const PREFERRED = [/antonio.*natural/i, /natural/i, /google.*portugu[eê]s.*brasil/i, /daniel|ricardo|felipe/i];
 
-export class UltronVoice {
+export class JarvisVoice {
   constructor() {
     this.queue = [];
     this.busy = false;
     this.neural = false;
     this.simLevel = 0;
     this.onSpeakingChange = () => {};
+    this.onVoiceChange = () => {};
+    this.serverDownUntil = 0;
     this.generation = 0;
   }
 
@@ -36,6 +38,7 @@ export class UltronVoice {
       const cfg = await (await fetch("/api/config")).json();
       this.neural = Boolean(cfg.neuralVoice);
       this.userName = cfg.name;
+      this.brainName = cfg.brain;
     } catch {
       this.neural = false;
     }
@@ -91,17 +94,27 @@ export class UltronVoice {
   }
 
   async fetchNeural(text) {
+    // Se a voz do servidor acabou de falhar, nem tenta: fala na hora com a do navegador.
+    if (Date.now() < this.serverDownUntil) return null;
     try {
       const r = await fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       });
-      if (!r.ok) return null;
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      this.setVoiceName(r.headers.get("X-Jarvis-Voice") || "servidor");
       return await this.ctx.decodeAudioData(await r.arrayBuffer());
     } catch {
+      this.serverDownUntil = Date.now() + 60_000;
       return null;
     }
+  }
+
+  setVoiceName(name) {
+    if (name === this.voiceName) return;
+    this.voiceName = name;
+    this.onVoiceChange(name);
   }
 
   async pump() {
@@ -137,6 +150,7 @@ export class UltronVoice {
 
   speakBrowser(text) {
     this.mode = "browser";
+    this.setVoiceName("navegador");
     if (!("speechSynthesis" in window)) return Promise.resolve();
     return new Promise((resolve) => {
       const u = new SpeechSynthesisUtterance(text);

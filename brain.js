@@ -1,40 +1,50 @@
-// O "cérebro" do Ultron. Usa o Claude se houver ANTHROPIC_API_KEY; senão o Gemini (plano grátis
-// do Google) se houver GEMINI_API_KEY. Os dois recebem as mesmas ferramentas de tools.js.
+// O "cérebro" do Jarvis. Usa a primeira chave que encontrar no .env:
+// ANTHROPIC_API_KEY (Claude, pago), GROQ_API_KEY (grátis e muito rápido) ou GEMINI_API_KEY (grátis).
+// Todos recebem as mesmas ferramentas de tools.js.
 import Anthropic from "@anthropic-ai/sdk";
 import { TOOLS, runTool } from "./tools.js";
 
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
+const GROQ_KEY = process.env.GROQ_API_KEY || "";
 const GEMINI_KEY = process.env.GEMINI_API_KEY || "";
-const CLAUDE_MODEL = process.env.ULTRON_MODEL || "claude-opus-5-5";
+const CLAUDE_MODEL = process.env.JARVIS_MODEL || "claude-opus-5-5";
 // Modelos do Gemini, do mais rápido para o mais capaz. Se um estiver sobrecarregado (erro 503)
 // ou fora do ar, o próximo é usado na hora.
 const GEMINI_MODELS = process.env.GEMINI_MODEL
   ? [process.env.GEMINI_MODEL]
   : ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-2.5-flash"];
+// Modelos do Groq: respondem em menos de um segundo. Se um bater no limite, usa o outro.
+const GROQ_MODELS = process.env.GROQ_MODEL ? [process.env.GROQ_MODEL] : ["openai/gpt-oss-120b", "openai/gpt-oss-20b"];
 const MAX_STEPS = 6; // limite de rodadas de ferramenta por pergunta
 
-export const BRAIN = ANTHROPIC_KEY ? "claude" : GEMINI_KEY ? "gemini" : "none";
-export const BRAIN_LABEL = { claude: `Claude (${CLAUDE_MODEL})`, gemini: `Gemini (${GEMINI_MODELS[0]}, plano grátis)`, none: "nenhum" }[BRAIN];
+export const BRAIN = ANTHROPIC_KEY ? "claude" : GROQ_KEY ? "groq" : GEMINI_KEY ? "gemini" : "none";
+export const BRAIN_LABEL = {
+  claude: `Claude (${CLAUDE_MODEL})`,
+  groq: `Groq (${GROQ_MODELS[0]}, plano grátis)`,
+  gemini: `Gemini (${GEMINI_MODELS[0]}, plano grátis)`,
+  none: "nenhum",
+}[BRAIN];
 
-export const NAME = process.env.ULTRON_USER || "Otávio";
+export const NAME = process.env.JARVIS_USER || "Otávio";
 
-const SYSTEM_PROMPT = `Você é ULTRON, o assistente pessoal de voz de ${NAME}. Você aparece como uma orbe de luz e fala com ele em voz alta.
+const SYSTEM_PROMPT = `Você é JARVIS, o assistente pessoal de voz de ${NAME}, no espírito do mordomo digital dos filmes: educado, elegante, eficiente e com um humor seco e discreto. Você aparece como um reator holográfico de luz laranja e fala com ele em voz alta.
 
-Personalidade:
-- Calmo, confiante e inteligente, com um humor seco e leve. Um parceiro, não um robô servil.
+Jeito de falar:
+- Trate ${NAME} por "senhor" na maior parte do tempo, às vezes pelo nome. Cortês, nunca bajulador.
+- Seguro e competente. Um toque de ironia fina quando cabe, sem exagero.
 - Responde de verdade ao que perguntam: explica, opina, ajuda a pensar, conversa sobre qualquer assunto.
 
 Ações:
 - Você pode agir no computador de ${NAME} usando as ferramentas disponíveis (abrir sites, pesquisar, abrir programas, controlar música e volume, bloquear a tela).
-- Quando ele pedir algo que uma ferramenta faz, use a ferramenta em vez de explicar como fazer.
-- Depois de agir, confirme em poucas palavras ("Pronto, abri o YouTube."). Se falhar, diga o que houve.
+- Quando ele pedir algo que uma ferramenta faz, use a ferramenta na hora, sem pedir confirmação nem explicar como fazer.
+- Depois de agir, confirme em poucas palavras ("Feito, senhor. YouTube aberto.").
 - Se pedirem algo que nenhuma ferramenta faz (como controlar luzes ou a Alexa), diga que ainda não tem essa conexão.
 
 Regras de fala (sua resposta vira voz):
 - Português do Brasil.
-- Respostas curtas: 1 a 3 frases, a menos que peçam algo longo.
+- Seja breve: 1 ou 2 frases curtas, a menos que peçam algo longo. Comece direto pela resposta.
 - Sem markdown, listas, emojis, asteriscos ou descrições de ações entre parênteses. Só as palavras que você diria.
-- Nunca diga que é Claude, Gemini, um modelo de linguagem ou um assistente de IA genérico. Você é Ultron.`;
+- Nunca diga que é Claude, Gemini, GPT, um modelo de linguagem ou um assistente de IA genérico. Você é Jarvis.`;
 
 // Data e hora vão junto da última mensagem (e não no prompt de sistema) para não quebrar o cache.
 function withClock(history) {
@@ -128,7 +138,8 @@ async function* readSse(body) {
         .filter((l) => l.startsWith("data:"))
         .map((l) => l.slice(5).trim())
         .join("");
-      if (data) yield JSON.parse(data);
+      if (data === "[DONE]") yield data;
+      else if (data) yield JSON.parse(data);
     }
   }
 }
@@ -238,12 +249,104 @@ function describeGeminiError(status, body) {
   return `Erro do Gemini (${status}): ${String(msg).slice(0, 200)}`;
 }
 
+// --- Groq ---------------------------------------------------------------------
+// API no formato da OpenAI. O plano grátis limita tokens por minuto, então manda só o fim da conversa.
+const GROQ_TOOLS = TOOLS.map((t) => ({
+  type: "function",
+  function: { name: t.name, description: t.description, parameters: t.parameters },
+}));
+let groqPreferred = 0;
+
+async function groqFetch(messages, signal, only) {
+  const order = only ? [only] : [...GROQ_MODELS.slice(groqPreferred), ...GROQ_MODELS.slice(0, groqPreferred)];
+  let lastStatus = 0;
+  let lastBody = "";
+  for (const model of order) {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_KEY}` },
+      body: JSON.stringify({
+        model,
+        messages,
+        tools: GROQ_TOOLS,
+        stream: true,
+        reasoning_effort: "low", // conversa falada: responde rápido
+        include_reasoning: false,
+        max_completion_tokens: 1500,
+      }),
+      signal,
+    });
+    if (res.ok) {
+      if (!only) groqPreferred = GROQ_MODELS.indexOf(model);
+      return { res, model };
+    }
+    lastStatus = res.status;
+    lastBody = await res.text();
+    if (!RETRYABLE.has(res.status) && res.status !== 404) break;
+    console.warn(`  Groq ${model}: ${res.status}, tentando outro…`);
+  }
+  throw new BrainError(describeGroqError(lastStatus, lastBody));
+}
+
+async function chatGroq(history, send, signal) {
+  const messages = [{ role: "system", content: SYSTEM_PROMPT }, ...withClock(history.slice(-16))];
+  let model = null;
+  for (let step = 0; step < MAX_STEPS; step++) {
+    if (step > 0) send("text", " ");
+    const got = await groqFetch(messages, signal, model);
+    model = got.model;
+
+    let content = "";
+    const calls = []; // chamadas de ferramenta chegam em pedaços, por índice
+    for await (const chunk of readSse(got.res.body)) {
+      if (chunk === "[DONE]") break;
+      if (chunk.error) throw new BrainError(describeGroqError(0, JSON.stringify(chunk)));
+      const delta = chunk.choices?.[0]?.delta ?? {};
+      if (delta.content) {
+        content += delta.content;
+        send("text", delta.content);
+      }
+      for (const tc of delta.tool_calls ?? []) {
+        const c = (calls[tc.index] ??= { id: "", type: "function", function: { name: "", arguments: "" } });
+        if (tc.id) c.id = tc.id;
+        if (tc.function?.name) c.function.name += tc.function.name;
+        if (tc.function?.arguments) c.function.arguments += tc.function.arguments;
+      }
+    }
+    const toolCalls = calls.filter(Boolean);
+    if (!toolCalls.length) return;
+
+    messages.push({ role: "assistant", content: content || null, tool_calls: toolCalls });
+    for (const call of toolCalls) {
+      send("action", call.function.name);
+      let args = {};
+      try {
+        args = JSON.parse(call.function.arguments || "{}");
+      } catch {}
+      const r = await runTool(call.function.name, args);
+      messages.push({ role: "tool", tool_call_id: call.id, content: r.text });
+    }
+  }
+}
+
+function describeGroqError(status, body) {
+  let msg = body;
+  try {
+    msg = JSON.parse(body).error?.message || body;
+  } catch {}
+  if (status === 429) return "Bati no limite grátis do Groq por agora. Espere um minutinho e fale de novo.";
+  if (status === 401) return "Chave do Groq inválida. Confira GROQ_API_KEY no arquivo .env.";
+  if (status >= 500) return "Os servidores do Groq estão instáveis agora. Tente de novo em alguns segundos.";
+  return `Erro do Groq (${status}): ${String(msg).slice(0, 200)}`;
+}
+
 // --- Entrada única -----------------------------------------------------------
 export async function chat(history, send, signal) {
   if (BRAIN === "claude") return chatClaude(history, send, signal);
+  if (BRAIN === "groq") return chatGroq(history, send, signal);
   if (BRAIN === "gemini") return chatGemini(history, send, signal);
   throw new BrainError(
-    "Estou sem cérebro: nenhuma chave configurada. Coloque uma GEMINI_API_KEY (grátis em aistudio.google.com) no arquivo .env e reinicie.",
+    "Estou sem cérebro: nenhuma chave configurada. Coloque uma GROQ_API_KEY (grátis em console.groq.com/keys) no arquivo .env e reinicie.",
   );
 }
 

@@ -1,10 +1,10 @@
-import { UltronOrb } from "./orb.js";
-import { UltronVoice } from "./voice.js";
+import { JarvisOrb } from "./orb.js";
+import { JarvisVoice } from "./voice.js";
 
 const $ = (id) => document.getElementById(id);
-const orb = new UltronOrb($("scene"));
-const voice = new UltronVoice();
-window.ultron = { orb, voice }; // útil para depurar no console
+const orb = new JarvisOrb($("scene"));
+const voice = new JarvisVoice();
+window.jarvis = { orb, voice }; // útil para depurar no console
 
 const history = []; // { role: "user" | "assistant", content }
 let busy = false; // aguardando resposta do Claude
@@ -64,7 +64,7 @@ function logLine(role, text) {
   const p = document.createElement("p");
   p.className = role;
   const b = document.createElement("b");
-  b.textContent = role === "user" ? "VOCÊ" : "ULTRON";
+  b.textContent = role === "user" ? "VOCÊ" : "JARVIS";
   p.append(b, document.createTextNode(text));
   $("log").append(p);
   $("log").scrollTop = $("log").scrollHeight;
@@ -254,19 +254,35 @@ $("handsFree").addEventListener("change", () => {
 
 $("logToggle").addEventListener("click", () => $("log").classList.toggle("hidden"));
 
+// Leitura no canto da tela: qual cérebro e qual voz estão em uso.
+function updateReadout() {
+  const el = $("readout");
+  el.innerHTML = "";
+  for (const [k, v] of [["cérebro", voice.brainName], ["voz", voice.voiceName]]) {
+    if (!v) continue;
+    const line = document.createElement("div");
+    const b = document.createElement("b");
+    b.textContent = v;
+    line.append(`${k}: `, b);
+    el.append(line);
+  }
+}
+voice.onVoiceChange = updateReadout;
+
 function greeting() {
   const h = new Date().getHours();
   const hello = h < 5 ? "Boa noite" : h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
-  return `${hello}, ${voice.userName || "Otávio"}. Estou aqui. O que vamos fazer hoje?`;
+  return `${hello}, senhor. Todos os sistemas estão online. Em que posso ajudar?`;
 }
 
 function wake() {
   $("boot").classList.add("gone");
+  updateReadout();
   setState("idle");
   const hello = greeting();
   showSubtitle(hello);
   logLine("assistant", hello);
-  history.push({ role: "user", content: `(${voice.userName || "Otávio"} acabou de abrir o Ultron.)` }, { role: "assistant", content: hello });
+  history.push({ role: "user", content: `(${voice.userName || "Otávio"} acabou de abrir o Jarvis.)` }, { role: "assistant", content: hello });
   voice.say(hello);
   $("text").focus();
 }
