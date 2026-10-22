@@ -4,7 +4,15 @@ Set fso = CreateObject("Scripting.FileSystemObject")
 pasta = fso.GetParentFolderName(WScript.ScriptFullName)
 sh.CurrentDirectory = pasta
 
-' Se o servidor ja estiver rodando, este segundo fecha sozinho (porta ocupada) e nada muda.
+' Fecha um servidor do Ultron que tenha ficado aberto (por exemplo, de uma versao antiga
+' ou de uma pasta que foi apagada) e liga um novo, desta pasta.
+Set wmi = GetObject("winmgmts:\\.\root\cimv2")
+For Each p In wmi.ExecQuery("SELECT * FROM Win32_Process WHERE Name='node.exe'")
+  cmd = p.CommandLine & ""
+  If InStr(cmd, "server.js") > 0 And InStr(cmd, "env-file") > 0 Then p.Terminate
+Next
+WScript.Sleep 500
+
 sh.Run "cmd /c node --env-file-if-exists=.env server.js > ultron.log 2>&1", 0, False
 WScript.Sleep 2500
 
