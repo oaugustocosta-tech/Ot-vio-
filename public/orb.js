@@ -29,11 +29,12 @@ float noise(vec3 x) {
              mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
                  mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
 }
-float fbm(vec3 p) {
+float fbm4(vec3 p) {
   float v = 0.0, a = 0.5;
-  for (int i = 0; i < 5; i++) { v += a * noise(p); p = p * 2.03 + vec3(1.7, 9.2, 4.1); a *= 0.5; }
+  for (int i = 0; i < 4; i++) { v += a * noise(p); p = p * 2.03 + vec3(1.7, 9.2, 4.1); a *= 0.5; }
   return v;
 }
+const int STEPS = 6;
 mat3 rotY(float a) { float c = cos(a), s = sin(a); return mat3(c,0,-s, 0,1,0, s,0,c); }
 mat3 rotX(float a) { float c = cos(a), s = sin(a); return mat3(1,0,0, 0,c,s, 0,-s,c); }
 
@@ -69,20 +70,34 @@ void main() {
   if (d < r + 0.004) {
     vec2 q = p / r;
     float z = sqrt(max(0.0, 1.0 - dot(q, q)));
-    vec3 n = rotX(0.35) * rotY(uFlow * 0.25) * vec3(q, z);
+    mat3 R = rotX(0.35) * rotY(uFlow * 0.25);
 
-    vec3 w = n * 1.5 + vec3(0.0, 0.0, uFlow * 0.18);
-    vec3 warp = vec3(fbm(w * 1.2 + uFlow * 0.07), fbm(w * 1.2 + 5.2), fbm(w * 1.2 - 3.1));
-    float f = fbm(w + warp * (1.4 + 0.8 * uLevel));
-    float g = fbm(w * 2.6 - warp - uFlow * 0.12);
+    // Volume: atravessa a esfera de frente para trás somando nuvens de nebulosa,
+    // o que dá profundidade de verdade (nuvens na frente encobrem as de trás).
+    vec3 acc = vec3(0.0);
+    float trans = 1.0;
+    for (int i = 0; i < STEPS; i++) {
+      float t = (float(i) + 0.5) / float(STEPS);
+      vec3 w = R * vec3(q, z * (1.0 - 2.0 * t)) * 1.35 + vec3(0.0, 0.0, uFlow * 0.15);
+      float warp = fbm4(w * 1.1 + uFlow * 0.06);
+      float dens = smoothstep(0.42, 0.8, fbm4(w + warp * (1.3 + 0.9 * uLevel)));
+      float tint = fbm4(w * 2.1 - warp - uFlow * 0.09);
+      vec3 cc = mix(uColB, uColC, smoothstep(0.38, 0.72, tint));
+      cc = mix(cc, vec3(1.0), dens * dens * 0.4); // miolo das nuvens mais claro
+      float a = dens * 0.45;
+      acc += trans * a * cc * 2.0;
+      trans *= 1.0 - a;
+    }
+    vec3 c = uColA * trans + acc;
 
-    vec3 c = mix(uColA, uColB, smoothstep(0.32, 0.72, f));
-    c = mix(c, uColC, smoothstep(0.5, 0.82, g) * 0.85);
-    c *= 0.35 + 1.05 * f;
-
-    // Faíscas: estrelas dentro da orbe.
-    float spark = pow(noise(n * 22.0 + uFlow * 0.3), 34.0) * 6.0;
-    c += vec3(1.0, 0.95, 0.9) * spark * (0.4 + uEnergy);
+    // Estrelas: pontos redondos que piscam, presos à superfície que gira.
+    vec3 s3 = R * vec3(q, z) * 9.0;
+    vec3 cell = floor(s3);
+    vec3 off = vec3(hash(cell), hash(cell + 7.1), hash(cell + 3.3)) - 0.5;
+    float sd = length(fract(s3) - 0.5 - off * 0.6);
+    float on = step(0.72, hash(cell + 1.9));
+    float tw = 0.55 + 0.45 * sin(uTime * 2.0 + hash(cell + 4.4) * 40.0);
+    c += vec3(1.0, 0.97, 0.92) * on * smoothstep(0.11, 0.0, sd) * tw * (0.8 + 0.8 * uEnergy);
 
     // Núcleo luminoso e borda de vidro.
     float fres = pow(1.0 - z, 2.2);
@@ -106,7 +121,7 @@ const MODES = {
   sleep:     { a: [0.02, 0.02, 0.06], b: [0.18, 0.2, 0.45], c: [0.3, 0.2, 0.5], energy: 0.45, speed: 0.15, ring: 0 },
   idle:      { a: [0.03, 0.02, 0.12], b: [0.32, 0.38, 1.0], c: [0.75, 0.3, 0.95], energy: 0.9, speed: 0.35, ring: 0 },
   listening: { a: [0.01, 0.06, 0.14], b: [0.2, 0.75, 1.0], c: [0.55, 0.45, 1.0], energy: 1.05, speed: 0.5, ring: 1 },
-  thinking:  { a: [0.06, 0.01, 0.12], b: [0.75, 0.3, 1.0], c: [1.0, 0.7, 0.35], energy: 1.0, speed: 1.6, ring: 0 },
+  thinking:  { a: [0.05, 0.01, 0.12], b: [0.62, 0.32, 1.0], c: [0.35, 0.8, 1.0], energy: 1.0, speed: 1.6, ring: 0 },
   speaking:  { a: [0.03, 0.02, 0.14], b: [0.4, 0.5, 1.0], c: [1.0, 0.45, 0.85], energy: 1.15, speed: 0.7, ring: 0 },
 };
 
@@ -155,8 +170,8 @@ export class UltronOrb {
   }
 
   resize() {
-    // Limita a resolução: o shader é por pixel, e 1.5x já fica nítido.
-    const dpr = Math.min(devicePixelRatio || 1, 1.5);
+    // Limita a resolução: o shader é por pixel e pesado; 1.25x já fica nítido.
+    const dpr = Math.min(devicePixelRatio || 1, 1.25);
     this.canvas.width = Math.round(this.canvas.clientWidth * dpr);
     this.canvas.height = Math.round(this.canvas.clientHeight * dpr);
     this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);

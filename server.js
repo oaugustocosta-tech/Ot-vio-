@@ -3,12 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chat, describeError, BRAIN, BRAIN_LABEL, NAME } from "./brain.js";
+import { synthesize, SERVER_VOICE, VOICE_LABEL } from "./speech.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
-const ELEVEN_KEY = process.env.ELEVENLABS_API_KEY || "";
-// "Adam" — voz masculina da biblioteca padrão da ElevenLabs. Troque por outra no .env.
-const ELEVEN_VOICE = process.env.ELEVENLABS_VOICE_ID || "pNInz6obpgDQGcFmaJgB";
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -94,7 +92,7 @@ async function handleChat(req, res) {
 }
 
 async function handleTts(req, res) {
-  if (!ELEVEN_KEY) {
+  if (!SERVER_VOICE) {
     res.writeHead(404).end();
     return;
   }
@@ -103,25 +101,15 @@ async function handleTts(req, res) {
     res.writeHead(400).end();
     return;
   }
-  const upstream = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE}?output_format=mp3_44100_128`,
-    {
-      method: "POST",
-      headers: { "xi-api-key": ELEVEN_KEY, "Content-Type": "application/json", Accept: "audio/mpeg" },
-      body: JSON.stringify({
-        text: text.slice(0, 2000),
-        model_id: "eleven_multilingual_v2",
-        voice_settings: { stability: 0.5, similarity_boost: 0.8, style: 0.2 },
-      }),
-    },
-  );
-  if (!upstream.ok) {
-    console.error("ElevenLabs:", upstream.status, await upstream.text());
+  try {
+    const audio = await synthesize(text);
+    res.writeHead(200, { "Content-Type": "audio/mpeg" });
+    res.end(audio);
+  } catch (err) {
+    // O navegador cai para a voz dele quando recebe erro aqui.
+    console.error("Voz:", err.message);
     res.writeHead(502).end();
-    return;
   }
-  res.writeHead(200, { "Content-Type": "audio/mpeg" });
-  res.end(Buffer.from(await upstream.arrayBuffer()));
 }
 
 const server = http.createServer(async (req, res) => {
@@ -130,7 +118,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && req.url === "/api/tts") return await handleTts(req, res);
     if (req.method === "GET" && req.url === "/api/config") {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ neuralVoice: Boolean(ELEVEN_KEY), brain: BRAIN, name: NAME }));
+      res.end(JSON.stringify({ neuralVoice: SERVER_VOICE, brain: BRAIN, name: NAME }));
       return;
     }
     if (req.method === "GET") return serveStatic(req, res);
@@ -145,5 +133,5 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`\n  ULTRON online → http://localhost:${PORT}`);
   console.log(`  Cérebro: ${BRAIN_LABEL}`);
-  console.log(`  Voz: ${ELEVEN_KEY ? "ElevenLabs" : "voz do navegador (no Edge, as vozes \"Natural\" soam bem melhor)"}\n`);
+  console.log(`  Voz: ${VOICE_LABEL}\n`);
 });
