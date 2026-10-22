@@ -11,7 +11,7 @@ import { rodarRotina } from "./rotina.js";
 import { loadModes, saveModes } from "./modos.js";
 import { listStartApps } from "./apps.js";
 import { PROGRAMAS, FECHAVEIS, runMode, runTool, escreverTexto } from "./tools.js";
-import { CORES } from "./led.js";
+import { CORES, contarLed, soltarOpenRgb } from "./led.js";
 import * as spotify from "./spotify.js";
 import { diagnostico } from "./diagnostico.js";
 import { lerChaves, salvarChaves, reiniciar } from "./chaves.js";
@@ -168,6 +168,7 @@ function novidade() {
 // "Jarvis, desligar": fecha a janela dele no Edge (o perfil JarvisEdge) e encerra o servidor.
 function desligar() {
   console.log("  Desligando a pedido do usuário.");
+  soltarOpenRgb();
   if (process.platform === "win32") {
     runPs("fechar-janela.ps1", [], 8000).finally(() => process.exit(0));
   } else {
@@ -230,6 +231,24 @@ const server = http.createServer(async (req, res) => {
       }
       sendJson(res, 200, { ok: true });
       return reiniciar();
+    }
+    if (req.method === "POST" && req.url === "/api/led/instalar") {
+      if (process.platform !== "win32") return sendJson(res, 400, { error: "Só no Windows." });
+      let saida = "";
+      try {
+        saida = await runPs("openrgb.ps1", [DADOS], 10 * 60_000);
+      } catch (err) {
+        saida = String(err.stdout || "") || `ERRO ${err.message}`;
+      }
+      const linhas = saida.split(/\r?\n/).filter((l) => /^(OK|ERRO) /.test(l));
+      const erro = linhas.find((l) => l.startsWith("ERRO"));
+      if (erro || !linhas.length) return sendJson(res, 500, { error: (erro || "ERRO O instalador do OpenRGB não respondeu.").slice(5) });
+      // Já testa: abre o OpenRGB e conta as luzes que ele achou.
+      try {
+        return sendJson(res, 200, { ok: true, msg: `Pronto. ${await contarLed()}. Agora é só dizer "Jarvis, LED azul".` });
+      } catch (err) {
+        return sendJson(res, 200, { ok: false, msg: `OpenRGB instalado, mas: ${err.message}` });
+      }
     }
     if (req.method === "GET" && req.url === "/api/diagnostico") return sendJson(res, 200, await diagnostico());
     if (req.method === "GET" && req.url === "/api/apps") return sendJson(res, 200, await listStartApps());

@@ -47,15 +47,17 @@ Ele também abre qualquer programa do menu Iniciar pelo nome: "Jarvis, abre o Ph
 
 Com Spotify **Premium**, o Jarvis toca músicas, artistas e playlists e controla o player: "Jarvis, toca Back in Black", "Jarvis, toca lofi na Alexa", "Jarvis, passa a música para o PC", "Jarvis, volume 30". A caixinha Echo da Alexa aparece no Spotify como um aparelho, então ele toca nela também. Para ligar, abra **Modos** e siga os 5 passos do quadro Spotify (criar um app grátis no painel de desenvolvedor do Spotify, colar o Client ID e clicar em Conectar). A conexão fica salva em `%APPDATA%\Jarvis\spotify.json`.
 
-## LED do PC (ASUS Aura / Armoury Crate)
+## LED do PC (fans, gabinete, placa-mãe)
 
-Com o Armoury Crate instalado (com o Aura), o Jarvis muda a cor dos LEDs ligados à placa-mãe ASUS (os do gabinete, fans, fitas): "Jarvis, LED azul", "Jarvis, apaga o LED", "Jarvis, devolve o LED" (volta ao efeito que estava no Armoury Crate). Dá para colocar a cor do LED num modo, por exemplo o modo game acendendo vermelho. Isso usa o kit do Aura que o próprio Armoury Crate instala; se ele não estiver lá, o Jarvis avisa e diz o motivo. Quando dá certo, ele diz quantos aparelhos e luzes mudou.
+"Jarvis, LED azul", "Jarvis, apaga o LED", "Jarvis, devolve o LED". Dá para colocar a cor do LED num modo, por exemplo o modo game acendendo vermelho.
 
-Se a cor não mudar:
-- Veja se o próprio Armoury Crate (aba Aura Sync) consegue mudar a cor do gabinete. Se nem ele consegue, o Jarvis também não.
-- No Windows 11, a **Iluminação Dinâmica** pode tomar o controle dos LEDs: em Configurações > Personalização > Iluminação dinâmica, desligue "Usar a Iluminação Dinâmica nos meus dispositivos" (ou coloque o Armoury Crate em primeiro na lista).
-- Não precisa abrir o Aura Creator: ele é só para criar efeitos.
-- Rode o **Diagnóstico** (em Ajustes): a linha "LED (Aura)" diz quantos aparelhos e luzes o kit do Aura enxerga. Se der 0, o Armoury Crate não está expondo os fans para outros programas.
+O kit do Aura que vem no Armoury Crate trava nas versões novas, então o Jarvis usa o **OpenRGB**, um programa grátis e de código aberto que fala direto com a placa e as fans. Em **Ajustes > LED das fans**, clique em **Instalar OpenRGB**: o Jarvis baixa, testa e diz quantas luzes achou. Nada é desinstalado: o Armoury Crate e o Aura Creator continuam aí.
+
+- Quando você pede uma cor, o Jarvis abre o OpenRGB minimizado e muda as luzes.
+- "Jarvis, devolve o LED" (ou "Jarvis, desligar") fecha o OpenRGB. Para o Armoury Crate voltar com o efeito dele, abra o Armoury Crate (ou reinicie o PC).
+- Se a cor piscar ou voltar sozinha, o Armoury Crate está brigando pelas luzes: no Armoury Crate, deixe um efeito parado (Estático) enquanto usa o Jarvis.
+- No Windows 11, a **Iluminação Dinâmica** também pode tomar o controle: em Configurações > Personalização > Iluminação dinâmica, desligue "Usar a Iluminação Dinâmica nos meus dispositivos".
+- Sem o OpenRGB, o Jarvis ainda tenta o kit do Aura. O **Diagnóstico** mostra na linha "LED" quantas luzes ele enxerga.
 
 ## A rotina de quando o PC liga
 

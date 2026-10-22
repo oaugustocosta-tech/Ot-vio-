@@ -715,6 +715,22 @@ $("diagRun").addEventListener("click", async () => {
   }
 });
 
+$("ledInstall").addEventListener("click", async () => {
+  const btn = $("ledInstall");
+  const msg = $("ledMsg");
+  btn.disabled = true;
+  msg.textContent = "Baixando e preparando o OpenRGB. Pode levar um ou dois minutos…";
+  try {
+    const r = await fetch("/api/led/instalar", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const j = await r.json();
+    msg.textContent = j.msg || j.error || "Pronto.";
+  } catch {
+    msg.textContent = "O servidor do Jarvis não respondeu.";
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 $("audioTest").addEventListener("click", () => {
   if (!voice.ctx) return;
   voice.say("Testando, senhor. Esta é a minha voz.");
