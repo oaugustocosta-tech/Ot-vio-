@@ -17,7 +17,7 @@ sh.Run "cmd /c node --env-file-if-exists=.env server.js > jarvis.log 2>&1", 0, F
 WScript.Sleep 2500
 
 ' Quando abre junto com o Windows (atalho da pasta Inicializar passa "inicio"), roda a rotina.txt.
-endereco = "http://localhost:3000/?auto"
+endereco = "http://127.0.0.1:3000/?auto"
 If WScript.Arguments.Count > 0 Then
   If WScript.Arguments(0) = "inicio" Then endereco = endereco & "&rotina"
 End If

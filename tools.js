@@ -5,6 +5,8 @@
 import { spawn, execFile } from "node:child_process";
 import { findStartApp, openApp } from "./apps.js";
 import { findMode, loadModes } from "./modos.js";
+import * as spotify from "./spotify.js";
+import { setLed, CORES } from "./led.js";
 
 const WINDOWS = process.platform === "win32";
 
@@ -192,6 +194,53 @@ export const TOOLS = [
     },
   },
   {
+    name: "tocar_spotify",
+    description: "Toca no Spotify uma música, artista, playlist ou álbum. Pode tocar no computador, no celular ou na caixinha Echo da Alexa (aparelho 'alexa'). Use sempre que pedirem para tocar uma música.",
+    parameters: {
+      type: "object",
+      properties: {
+        busca: { type: "string", description: "O que procurar, por exemplo 'Back in Black AC/DC' ou 'lofi'" },
+        tipo: { type: "string", enum: ["musica", "artista", "playlist", "album"] },
+        aparelho: { type: "string", description: "Onde tocar, se ele disser: alexa, pc, celular ou o nome do aparelho" },
+      },
+      required: ["busca"],
+    },
+    async run(input) {
+      return spotify.play(input);
+    },
+  },
+  {
+    name: "controlar_spotify",
+    description: "Controla o Spotify em qualquer aparelho (inclusive na Alexa): pausar, continuar, próxima, anterior, volume de 0 a 100, ou transferir a música para outro aparelho.",
+    parameters: {
+      type: "object",
+      properties: {
+        acao: { type: "string", enum: ["pausar", "continuar", "proxima", "anterior", "volume", "transferir"] },
+        valor: { type: "integer", description: "Volume de 0 a 100" },
+        aparelho: { type: "string", description: "alexa, pc, celular ou nome do aparelho (obrigatório para transferir)" },
+      },
+      required: ["acao"],
+    },
+    async run(input) {
+      return spotify.control(input);
+    },
+  },
+  {
+    name: "controlar_led",
+    description: `Muda o LED do computador (ASUS Aura / Armoury Crate): pôr uma cor, apagar, ou devolver para o efeito do Armoury Crate. Cores: ${Object.keys(CORES).join(", ")}, ou um código como #FF8800.`,
+    parameters: {
+      type: "object",
+      properties: {
+        acao: { type: "string", enum: ["cor", "desligar", "devolver"] },
+        cor: { type: "string", description: "Nome da cor ou código, quando a ação for cor" },
+      },
+      required: ["acao"],
+    },
+    async run({ acao, cor }) {
+      return setLed(acao, cor);
+    },
+  },
+  {
     name: "controlar_midia",
     description: "Controla música/vídeo e o volume do computador: tocar ou pausar, próxima, anterior, aumentar ou diminuir volume, mudo.",
     parameters: {
@@ -252,6 +301,8 @@ export async function runMode(modo) {
       if (a.tipo === "site") await openTarget(normalizeUrl(a.alvo));
       else if (a.tipo === "app") a.id ? await openApp(a.id) : await openProgram(a.alvo);
       else if (a.tipo === "fechar") await closeProgram(a.alvo);
+      else if (a.tipo === "spotify") await spotify.play({ busca: a.alvo, tipo: a.extra || "playlist" });
+      else if (a.tipo === "led") await setLed(a.alvo === "desligado" ? "desligar" : a.alvo === "armoury" ? "devolver" : "cor", a.alvo);
       feitos.push(a.alvo);
     } catch (err) {
       feitos.push(`${a.alvo} (falhou: ${err.message})`);

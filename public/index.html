@@ -34,7 +34,8 @@
 
     <aside class="modesbox" aria-label="Modos">
       <h2>Modos</h2>
-      <p class="hint">Junte sites e programas num modo e diga, por exemplo, "Jarvis, modo trabalho".</p>
+      <p class="hint">Junte sites, programas, música e LED num modo e diga, por exemplo, "Jarvis, modo trabalho".</p>
+      <section id="spotifyBox" class="conn"></section>
       <div id="modeList"></div>
       <form id="modeForm" class="modeform">
         <input id="modeName" maxlength="40" autocomplete="off" placeholder="Nome do modo (ex.: trabalho, game)" />
@@ -44,9 +45,18 @@
             <option value="site">Abrir site</option>
             <option value="app">Abrir programa</option>
             <option value="fechar">Fechar programa</option>
+            <option value="spotify">Tocar no Spotify</option>
+            <option value="led">Cor do LED</option>
           </select>
           <input id="actTarget" autocomplete="off" aria-label="Site ou programa" />
           <select id="actClose" aria-label="Programa para fechar" hidden></select>
+          <select id="actKind" aria-label="O que tocar" hidden>
+            <option value="playlist">Playlist</option>
+            <option value="musica">Música</option>
+            <option value="artista">Artista</option>
+            <option value="album">Álbum</option>
+          </select>
+          <select id="actColor" aria-label="Cor do LED" hidden></select>
           <button type="button" id="actAdd">Adicionar</button>
         </div>
         <datalist id="appList"></datalist>

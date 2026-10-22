@@ -8,6 +8,8 @@ import { rodarRotina } from "./rotina.js";
 import { loadModes, saveModes } from "./modos.js";
 import { listStartApps } from "./apps.js";
 import { PROGRAMAS, FECHAVEIS, runMode } from "./tools.js";
+import { CORES } from "./led.js";
+import * as spotify from "./spotify.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
@@ -132,19 +134,61 @@ const sendJson = (res, status, data) => {
 
 async function handleModes(req, res) {
   if (req.method === "GET") {
-    return sendJson(res, 200, { modos: loadModes(), programas: Object.keys(PROGRAMAS), fechaveis: Object.keys(FECHAVEIS) });
+    return sendJson(res, 200, { modos: loadModes(), programas: Object.keys(PROGRAMAS), fechaveis: Object.keys(FECHAVEIS), cores: Object.keys(CORES) });
   }
   const { modos } = await readJson(req);
   const instalados = new Set((await listStartApps()).map((a) => a.id));
   try {
-    sendJson(res, 200, { modos: saveModes(modos, { fechaveis: new Set(Object.keys(FECHAVEIS)), conhecidos: new Set(Object.keys(PROGRAMAS)), instalados }) });
+    sendJson(res, 200, { modos: saveModes(modos, { fechaveis: new Set(Object.keys(FECHAVEIS)), conhecidos: new Set(Object.keys(PROGRAMAS)), instalados, cores: new Set(Object.keys(CORES)) }) });
   } catch (err) {
     sendJson(res, 400, { error: err.message });
   }
 }
 
+// Página simples que aparece depois de conectar o Spotify.
+function spotifyPage(res, ok, text) {
+  res.writeHead(ok ? 200 : 400, { "Content-Type": "text/html; charset=utf-8" });
+  const safe = String(text).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  res.end(`<!doctype html><meta charset="utf-8"><title>Jarvis</title><body style="background:#050302;color:#ffe9cf;font:16px system-ui;display:grid;place-items:center;height:100vh;margin:0"><p>${safe}</p>`);
+}
+
+async function handleSpotify(req, res, url) {
+  if (url.pathname === "/api/spotify") {
+    if (req.method === "POST") {
+      try {
+        spotify.setClientId((await readJson(req)).clientId);
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+    return sendJson(res, 200, spotify.status());
+  }
+  if (url.pathname === "/spotify/login") {
+    try {
+      res.writeHead(302, { Location: spotify.loginUrl() }).end();
+    } catch (err) {
+      spotifyPage(res, false, err.message);
+    }
+    return;
+  }
+  // /spotify/callback
+  const error = url.searchParams.get("error");
+  if (error) return spotifyPage(res, false, `O Spotify recusou a conexão (${error}).`);
+  try {
+    await spotify.finishLogin(url.searchParams.get("code"), url.searchParams.get("state"));
+    spotifyPage(res, true, "Spotify conectado! Pode fechar esta janela e dizer: Jarvis, toca alguma coisa.");
+  } catch (err) {
+    spotifyPage(res, false, err.message);
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   try {
+    const url = new URL(req.url, "http://x");
+    if (/^\/(api\/spotify|spotify\/(login|callback))$/.test(url.pathname) && (req.method === "GET" || url.pathname === "/api/spotify")) {
+      if (req.method === "POST" && !fromJarvis(req)) return sendJson(res, 403, { error: "Pedido recusado." });
+      return await handleSpotify(req, res, url);
+    }
     if (req.method === "POST" && !fromJarvis(req)) return sendJson(res, 403, { error: "Pedido recusado." });
     if (req.url === "/api/modos" && (req.method === "GET" || req.method === "POST")) return await handleModes(req, res);
     if (req.method === "GET" && req.url === "/api/apps") return sendJson(res, 200, await listStartApps());
@@ -176,8 +220,8 @@ const server = http.createServer(async (req, res) => {
 });
 
 // Só nesta máquina: ninguém da rede consegue falar com o Jarvis.
-server.listen(PORT, "localhost", () => {
-  console.log(`\n  JARVIS online → http://localhost:${PORT}`);
+server.listen(PORT, "127.0.0.1", () => {
+  console.log(`\n  JARVIS online → http://127.0.0.1:${PORT}`);
   console.log(`  Cérebro: ${BRAIN_LABEL}`);
   console.log(`  Voz: ${VOICE_LABEL}\n`);
 });

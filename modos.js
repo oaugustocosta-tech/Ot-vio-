@@ -33,7 +33,7 @@ const isWebUrl = (u) => {
 };
 
 // Confere tudo antes de salvar: só ações conhecidas, sites da web e programas válidos.
-export function saveModes(modes, { fechaveis, conhecidos, instalados }) {
+export function saveModes(modes, { fechaveis, conhecidos, instalados, cores }) {
   if (!Array.isArray(modes) || modes.length > 40) throw new Error("Lista de modos inválida.");
   const clean = modes.map((m) => {
     const nome = String(m?.nome || "").trim().slice(0, 40);
@@ -52,6 +52,11 @@ export function saveModes(modes, { fechaveis, conhecidos, instalados }) {
         return { tipo: "app", alvo: String(a.alvo || "").slice(0, 120), id: a.id };
       }
       if (a?.tipo === "fechar" && fechaveis.has(a.alvo)) return { tipo: "fechar", alvo: a.alvo };
+      if (a?.tipo === "led" && (cores.has(a.alvo) || a.alvo === "armoury")) return { tipo: "led", alvo: a.alvo };
+      if (a?.tipo === "spotify" && String(a.alvo || "").trim()) {
+        const extra = ["musica", "artista", "playlist", "album"].includes(a.extra) ? a.extra : "playlist";
+        return { tipo: "spotify", alvo: String(a.alvo).trim().slice(0, 120), extra };
+      }
       throw new Error(`Ação inválida no modo "${nome}".`);
     });
     return { nome, acoes };

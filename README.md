@@ -23,13 +23,21 @@ Pronto. Ao ligar o PC, ele abre em tela cheia, diz "Bom dia, senhor" e roda a su
 - **Minimizado ele continua ouvindo.** Só não feche a janela. "Jarvis, se esconde" minimiza; "Jarvis, aparece" traz de volta. **F11** sai da tela cheia.
 - **Clicar no reator** também chama. Clicar enquanto ele fala corta a fala.
 - **Chat** (canto superior direito): mostra a conversa escrita e um campo para digitar. Fica escondido por padrão.
-- Exemplos: "abre o YouTube", "fecha o Discord", "abre o Telegram", "pesquisa a previsão do tempo de amanhã", "aumenta o volume", "pausa a música", "bloqueia o computador".
+- Exemplos: "abre o YouTube", "fecha o Discord", "toca lofi na Alexa", "LED azul", "modo game", "abre o Telegram", "pesquisa a previsão do tempo de amanhã", "aumenta o volume", "pausa a música", "bloqueia o computador".
 
 ## Modos (trabalho, game...)
 
 No botão **Modos** (canto superior direito) você cria seus próprios modos sem programar: dê um nome (por exemplo `trabalho`), adicione o que ele deve fazer (abrir um site, abrir qualquer programa instalado, fechar um programa) e clique em **Salvar modo**. Depois é só dizer "Jarvis, modo trabalho". O botão **Testar** roda o modo na hora. Os modos ficam salvos no arquivo `modos.json` da pasta e não se perdem quando você atualiza o Jarvis.
 
 Ele também abre qualquer programa do menu Iniciar pelo nome: "Jarvis, abre o Photoshop".
+
+## Spotify (no PC ou na Alexa)
+
+Com Spotify **Premium**, o Jarvis toca músicas, artistas e playlists e controla o player: "Jarvis, toca Back in Black", "Jarvis, toca lofi na Alexa", "Jarvis, passa a música para o PC", "Jarvis, volume 30". A caixinha Echo da Alexa aparece no Spotify como um aparelho, então ele toca nela também. Para ligar, abra **Modos** e siga os 5 passos do quadro Spotify (criar um app grátis no painel de desenvolvedor do Spotify, colar o Client ID e clicar em Conectar). A conexão fica salva em `spotify.json`.
+
+## LED do PC (ASUS Aura / Armoury Crate)
+
+Com o Armoury Crate instalado (com o Aura), o Jarvis muda a cor dos LEDs: "Jarvis, LED azul", "Jarvis, apaga o LED", "Jarvis, devolve o LED" (volta ao efeito que estava no Armoury Crate). Dá para colocar a cor do LED num modo, por exemplo o modo game acendendo vermelho. Isso usa o kit do Aura que o próprio Armoury Crate instala; se ele não estiver lá, o Jarvis avisa.
 
 ## A rotina de quando o PC liga
 
@@ -56,7 +64,7 @@ Qualquer microfone funciona: o do headset, o de uma webcam, ou o embutido de um 
 ```bash
 npm install
 cp .env.example .env      # coloque GROQ_API_KEY (ou GEMINI_API_KEY / ANTHROPIC_API_KEY)
-npm start                 # http://localhost:3000
+npm start                 # http://127.0.0.1:3000
 ```
 
 ```
@@ -67,6 +75,8 @@ tools.js          ações no computador; para incluir um programa, edite PROGRAM
 rotina.js         rotina de quando o PC liga (lê rotina.txt)
 modos.js          modos criados na tela Modos (salvos em modos.json)
 apps.js           programas instalados no Windows (menu Iniciar)
+spotify.js        Spotify: conexão (OAuth PKCE), tocar e controlar em qualquer aparelho
+led.js            LED pelo ASUS Aura SDK (COM aura.sdk.1, via PowerShell)
 public/orb.js     interface holográfica 3D animada (WebGL puro, sem dependências)
 public/voice.js   toca a voz (do servidor ou do navegador) e mede o volume para a orbe
 public/app.js     conversa: palavra "Jarvis", microfone, streaming, chat, estados, início automático
