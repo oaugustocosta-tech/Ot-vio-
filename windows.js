@@ -11,7 +11,7 @@ const ps = (nome, args) => ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
 export function runPs(nome, args = [], timeout = 20_000) {
   return new Promise((resolve, reject) => {
     execFile("powershell.exe", ps(nome, args), { windowsHide: true, timeout, maxBuffer: 8 << 20 }, (err, out) =>
-      err ? reject(err) : resolve(out),
+      err ? reject(Object.assign(err, { stdout: out })) : resolve(out),
     );
   });
 }

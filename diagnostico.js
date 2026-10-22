@@ -72,7 +72,7 @@ export async function diagnostico() {
       const nomes = [...new Set(janelas.slice(0, 4).map((j) => j.processo))].join(", ");
       return `${monitores} monitor(es), ${janelas.length} janelas abertas${nomes ? ` (${nomes}...)` : ""}`;
     }),
-    teste("LED (Aura)", async () => {
+    teste("LED", async () => {
       if (!WINDOWS) return "só no Windows";
       return contarLed();
     }),

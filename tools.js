@@ -367,7 +367,7 @@ export const TOOLS = [
   },
   {
     name: "controlar_led",
-    description: `Muda o LED do computador (ASUS Aura / Armoury Crate): pôr uma cor, apagar, ou devolver para o efeito do Armoury Crate. Cores: ${Object.keys(CORES).join(", ")}, ou um código como #FF8800.`,
+    description: `Muda o LED do computador e das fans (pelo OpenRGB ou pelo ASUS Aura): pôr uma cor, apagar, ou devolver o controle para o Armoury Crate. Cores: ${Object.keys(CORES).join(", ")}, ou um código como #FF8800.`,
     parameters: {
       type: "object",
       properties: {

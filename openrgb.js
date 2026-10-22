@@ -4,7 +4,7 @@
 import net from "node:net";
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, execFile } from "node:child_process";
 import { DADOS } from "./dados.js";
 
 const PORTA = 6742;
@@ -126,6 +126,7 @@ export function lerAparelho(b) {
 }
 
 let conexao = null;
+let usou = false; // o Jarvis mudou alguma cor pelo OpenRGB nesta sessão
 
 function conectar() {
   return new Promise((resolve, reject) => {
@@ -209,5 +210,16 @@ export async function corOpenRgb(hex) {
     c.enviar(a.id, UPDATELEDS, corpo);
     luzes += a.leds;
   }
+  usou = true;
   return { placas: lista.length, luzes };
+}
+
+// Devolve o LED: fecha o OpenRGB para ele largar as luzes. O Armoury Crate volta a mandar quando
+// reaplica o efeito dele (ao abrir o Armoury Crate ou reiniciar o PC).
+export function soltarOpenRgb() {
+  if (!usou || process.platform !== "win32") return Promise.resolve(false);
+  usou = false;
+  conexao?.sock.destroy();
+  conexao = null;
+  return new Promise((resolve) => execFile("taskkill", ["/IM", "OpenRGB.exe", "/F"], { windowsHide: true }, () => resolve(true)));
 }

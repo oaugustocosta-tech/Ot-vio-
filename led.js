@@ -5,9 +5,10 @@
 // Se o OpenRGB estiver instalado, ele vem primeiro: o kit do Aura trava nas versões novas do
 // Armoury Crate (fica sem responder), e o OpenRGB fala direto com a placa e as fans.
 import { spawnPs } from "./windows.js";
-import { acharOpenRgb, contarOpenRgb, corOpenRgb } from "./openrgb.js";
+import { acharOpenRgb, contarOpenRgb, corOpenRgb, soltarOpenRgb } from "./openrgb.js";
+export { soltarOpenRgb };
 
-const DICA = "Para o Jarvis controlar as fans, instale o OpenRGB em Ajustes > LED.";
+const DICA = "Para o Jarvis controlar as fans, clique em Instalar OpenRGB, em Ajustes.";
 
 export const CORES = {
   vermelho: "FF0000",
@@ -117,7 +118,10 @@ export function parseCor(cor) {
 
 export async function setLed(acao, cor) {
   if (acao === "devolver") {
-    if (acharOpenRgb()) return "Com o OpenRGB, o LED fica na última cor. Para um efeito, escolha no próprio OpenRGB.";
+    if (acharOpenRgb()) {
+      await soltarOpenRgb();
+      return "Larguei o LED. Para o Armoury Crate voltar com o efeito dele, abra o Armoury Crate (ou reinicie o PC).";
+    }
     await send("soltar");
     return "LED de volta para o Armoury Crate.";
   }
