@@ -83,8 +83,9 @@ public/orb.js     interface holográfica 3D animada (WebGL puro, sem dependênci
 public/voice.js   toca a voz (do servidor ou do navegador) e mede o volume para a orbe
 public/app.js     conversa: palavra "Jarvis", microfone, streaming, chat, estados, início automático
 public/modos.js   tela Modos
-Jarvis.vbs        abre o servidor escondido e a janela do Jarvis no Edge (Windows)
-windows/          instalador para Windows
+windows.js        roda os scripts do PowerShell da pasta windows/
+windows/          instalador e scripts do Windows (abrir.ps1 abre o servidor escondido e a
+                  janela do Jarvis no Edge; os outros são as ações: janela, mídia, LED...)
 ```
 
 A personalidade está no `SYSTEM_PROMPT` em `brain.js`.

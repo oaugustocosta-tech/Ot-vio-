@@ -4,6 +4,7 @@
 // inclua uma linha em PROGRAMAS.
 import { spawn, execFile } from "node:child_process";
 import { findStartApp, openApp } from "./apps.js";
+import { runPs } from "./windows.js";
 import { findMode, loadModes } from "./modos.js";
 import * as spotify from "./spotify.js";
 import { setLed, CORES } from "./led.js";
@@ -49,8 +50,8 @@ export const FECHAVEIS = {
   "epic games": ["EpicGamesLauncher.exe"],
 };
 
-// Mostra ou esconde a janela do Jarvis (o título dela é "JARVIS").
-const JANELA = { mostrar: 9, esconder: 6 }; // SW_RESTORE, SW_MINIMIZE
+// Mostra ou esconde a janela do Jarvis (o título dela é "JARVIS"); ver windows/janela.ps1.
+const JANELA = ["mostrar", "esconder"];
 
 // Teclas virtuais de mídia do Windows.
 const TECLAS = {
@@ -175,21 +176,13 @@ export const TOOLS = [
     description: "Mostra (traz para a frente) ou esconde (minimiza) a janela do próprio Jarvis. Escondido, ele continua ouvindo e respondendo.",
     parameters: {
       type: "object",
-      properties: { acao: { type: "string", enum: Object.keys(JANELA) } },
+      properties: { acao: { type: "string", enum: JANELA } },
       required: ["acao"],
     },
     async run({ acao }) {
       onlyWindows();
-      const n = JANELA[acao];
-      if (!n) throw new Error(`Ação desconhecida: ${acao}`);
-      const script = [
-        `Add-Type -Name W -Namespace J -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr h, int n); [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);'`,
-        `Get-Process msedge -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -like 'JARVIS*' } | ForEach-Object {`,
-        `  [J.W]::ShowWindowAsync($_.MainWindowHandle, ${n}) | Out-Null`,
-        n === 9 ? `  [J.W]::SetForegroundWindow($_.MainWindowHandle) | Out-Null` : "",
-        `}`,
-      ].join("\n");
-      await runWait("powershell.exe", ["-NoProfile", "-WindowStyle", "Hidden", "-Command", script]);
+      if (!JANELA.includes(acao)) throw new Error(`Ação desconhecida: ${acao}`);
+      await runPs("janela.ps1", ["-Acao", acao]);
       return acao === "mostrar" ? "Janela à vista." : "Janela minimizada; continuo ouvindo.";
     },
   },
@@ -256,8 +249,7 @@ export const TOOLS = [
       const key = TECLAS[acao];
       if (!key) throw new Error(`Ação desconhecida: ${acao}`);
       const n = /volume/.test(acao) ? Math.min(25, Math.max(1, Number(vezes) || 5)) : 1;
-      const script = `$s = New-Object -ComObject WScript.Shell; 1..${n} | % { $s.SendKeys([char]${key}) }`;
-      await run("powershell.exe", ["-NoProfile", "-WindowStyle", "Hidden", "-Command", script]);
+      await runPs("midia.ps1", ["-Tecla", String(key), "-Vezes", String(n)]);
       return `Feito: ${acao}${n > 1 ? ` (${n}x)` : ""}.`;
     },
   },

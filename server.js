@@ -1,6 +1,6 @@
 import http from "node:http";
 import fs from "node:fs";
-import { spawn } from "node:child_process";
+import { runPs } from "./windows.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chat, describeError, BRAIN_LABEL, BRAIN_SHORT, NAME } from "./brain.js";
@@ -150,12 +150,7 @@ async function handleModes(req, res) {
 function desligar() {
   console.log("  Desligando a pedido do usuário.");
   if (process.platform === "win32") {
-    const script =
-      "Get-CimInstance Win32_Process -Filter \"Name='msedge.exe'\" | Where-Object { $_.CommandLine -like '*JarvisEdge*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }";
-    const child = spawn("powershell.exe", ["-NoProfile", "-WindowStyle", "Hidden", "-Command", script], { windowsHide: true, stdio: "ignore" });
-    child.on("exit", () => process.exit(0));
-    child.on("error", () => process.exit(0));
-    setTimeout(() => process.exit(0), 8000);
+    runPs("fechar-janela.ps1", [], 8000).finally(() => process.exit(0));
   } else {
     setTimeout(() => process.exit(0), 300);
   }
