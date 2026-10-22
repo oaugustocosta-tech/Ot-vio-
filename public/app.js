@@ -249,7 +249,7 @@ let retryDelay = 300;
 let listenTimer = null;
 let ignoreUntil = 0; // logo depois de cortar a fala, ignora o resto do "para de falar"
 
-// Saída de som escolhida no painel Áudio (vazio = o padrão do Windows).
+// Saída de som escolhida no painel Ajustes (vazio = o padrão do Windows).
 const audio = { out: "" };
 try {
   audio.out = JSON.parse(localStorage.getItem("jarvis.audio") || "{}").out || "";
@@ -439,7 +439,7 @@ $("composer").addEventListener("submit", (e) => {
   ask(t);
 });
 
-// Painéis do canto direito (Chat, Modos e Áudio): um de cada vez.
+// Painéis do canto direito (Chat, Modos e Ajustes): um de cada vez.
 const PANELS = ["chat", "modes", "audio"];
 function setPanel(name) {
   for (const p of PANELS) {
@@ -450,7 +450,10 @@ function setPanel(name) {
     localStorage.setItem("jarvis.panel", name || "");
   } catch {}
   if (name === "chat") $("text").focus();
-  if (name === "audio") fillDevices();
+  if (name === "audio") {
+    fillDevices();
+    fillKeys();
+  }
 }
 for (const p of PANELS) {
   $(`${p}Toggle`).addEventListener("click", () => setPanel(document.body.classList.contains(p) ? null : p));
@@ -461,7 +464,7 @@ try {
 } catch {}
 initModes();
 
-// --- Painel Áudio: por onde sai a voz dele ------------------------------------------
+// --- Painel Ajustes: diagnóstico e por onde sai a voz dele ---------------------------
 // O microfone não dá para escolher aqui: o reconhecimento de voz do Edge sempre usa o
 // microfone padrão do Windows (Configurações > Sistema > Som > Entrada).
 function audioMsg(text, ok = true) {
@@ -518,6 +521,68 @@ $("outSel").addEventListener("change", async () => {
     audioMsg(err.message, false);
   }
 });
+// Chaves: mostra quais já estão salvas e manda as novas para o servidor.
+async function fillKeys() {
+  try {
+    const k = await (await fetch("/api/chaves")).json();
+    for (const nome of ["GROQ_API_KEY", "ELEVENLABS_API_KEY", "AZURE_SPEECH_KEY"]) {
+      $(`k_${nome}`).textContent = k[nome] ? "✓ salva" : "";
+    }
+    const f = $("keysForm");
+    f.JARVIS_VOZ.value = k.JARVIS_VOZ || "daniel";
+    f.AZURE_SPEECH_REGION.value = k.AZURE_SPEECH_REGION || "";
+  } catch {}
+}
+
+$("keysForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const novas = {};
+  for (const el of f.elements) {
+    if (!el.name) continue;
+    const v = el.value.trim();
+    if (v) novas[el.name] = v; // campo vazio: mantém a chave que já está salva
+  }
+  const msg = $("keysMsg");
+  try {
+    const r = await fetch("/api/chaves", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(novas) });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(body.error || `erro ${r.status}`);
+    msg.classList.add("ok");
+    msg.textContent = "Salvo. Reiniciando o Jarvis…";
+    setTimeout(() => location.reload(), 3000);
+  } catch (err) {
+    msg.classList.remove("ok");
+    msg.textContent = err.message;
+  }
+});
+
+$("diagRun").addEventListener("click", async () => {
+  const list = $("diagList");
+  const btn = $("diagRun");
+  btn.disabled = true;
+  list.innerHTML = "<li>Testando, leva alguns segundos…</li>";
+  try {
+    const r = await fetch("/api/diagnostico");
+    const itens = await r.json();
+    list.innerHTML = "";
+    for (const t of itens) {
+      const li = document.createElement("li");
+      li.className = t.ok ? "ok" : "erro";
+      const b = document.createElement("b");
+      b.textContent = `${t.ok ? "✓" : "✗"} ${t.nome}`;
+      const small = document.createElement("small");
+      small.textContent = [t.detalhe, t.ms >= 100 ? `${(t.ms / 1000).toFixed(1)} s` : ""].filter(Boolean).join(" · ");
+      li.append(b, small);
+      list.append(li);
+    }
+  } catch {
+    list.innerHTML = "<li class=\"erro\"><b>✗ O servidor do Jarvis não respondeu.</b></li>";
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 $("audioTest").addEventListener("click", () => {
   if (!voice.ctx) return;
   voice.say("Testando, senhor. Esta é a minha voz.");

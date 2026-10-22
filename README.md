@@ -65,15 +65,26 @@ Quando o Jarvis abre junto com o Windows, ele segue o arquivo `rotina.txt` da pa
 | `GEMINI_API_KEY` | Grátis, porém mais lento. |
 | `ANTHROPIC_API_KEY` | Pago por uso. Claude, o mais inteligente. Se estiver preenchida, ela é usada no lugar das outras. |
 
+## Ajustes e diagnóstico
+
+No botão **Ajustes** (canto superior direito):
+- **Rodar diagnóstico** testa a internet, o cérebro, cada voz e o Spotify, e mostra em português o que falhou e por quê (internet lenta, antivírus interceptando a conexão, chave recusada...). Se algo der errado, é a primeira coisa a olhar.
+- **Chaves e voz**: cole uma chave nova (Groq, ElevenLabs, Azure) ou troque a voz da ElevenLabs sem abrir arquivo nenhum. Ao salvar, o Jarvis reinicia sozinho.
+- **Som**: por onde sai a voz dele.
+
+Se o antivírus vigia conexões HTTPS (Kaspersky, Avast, ESET e outros fazem isso), o Jarvis usa os certificados do Windows para não ser bloqueado. Se o Windows usa um proxy, o Jarvis usa o mesmo.
+
 ## A voz
 
 Por padrão, o Jarvis fala com as vozes neurais da Microsoft (as mesmas do "Ler em voz alta" do Edge), que são grátis e soam humanas. Para trocar de voz, coloque `JARVIS_VOICE` no `.env` (por exemplo `pt-BR-FranciscaNeural`). Esse serviço não é oficial: se ele cair, o Jarvis usa a voz do navegador até voltar. Para uma voz ainda mais realista, coloque uma `ELEVENLABS_API_KEY`. O plano grátis da ElevenLabs dá uns 20 minutos de fala por mês; quando acabar, o Jarvis volta sozinho para a voz da Microsoft. A voz da ElevenLabs é escolhida com `JARVIS_VOZ`: `daniel` (britânico e sério, o padrão, o mais perto do mordomo do filme), `george`, `brian`, `alice` ou `lily` (estas duas femininas). O instalador pergunta qual você quer. No canto superior esquerdo da tela aparece qual cérebro e qual voz estão em uso. Se a ElevenLabs recusar (chave sem permissão de Text to Speech, créditos acabados, conta bloqueada), o Jarvis mostra o motivo na tela e fala com a voz reserva.
+
+Ordem das vozes: ElevenLabs (se tiver chave) → **Azure Speech** (se tiver chave) → Microsoft grátis → voz do navegador. A Azure é a voz oficial da Microsoft: o plano grátis (F0) dá 500 mil caracteres por mês, umas 9 horas de fala, e não cai como o serviço não oficial. Para usar, crie um recurso **Speech** no plano **Free F0** em [portal.azure.com](https://portal.azure.com/#create/Microsoft.CognitiveServicesSpeechServices) (pede cartão só para confirmar a conta; o F0 não cobra) e cole a "Chave 1" e a região em Ajustes.
 
 ## Microfone
 
 Qualquer microfone funciona: o do headset, o de uma webcam, ou o embutido de um notebook. O reconhecimento de voz é o do próprio Edge (serviço da Microsoft), então o microfone fica aberto o tempo todo enquanto o Jarvis estiver rodando, mas ele só age quando ouve o nome dele. Enquanto fala, ele só aceita "para", para não obedecer à própria voz saindo na caixa de som.
 
-No botão **Áudio** (canto superior direito) dá para escolher, só para o Jarvis, por onde sai a voz dele (por exemplo a soundbar), sem mexer no som do Windows. A escolha fica salva. A voz reserva do navegador (a que só aparece quando as outras falham, por exemplo com a internet ruim) sempre sai no som padrão do Windows.
+No botão **Ajustes** (canto superior direito) dá para escolher, só para o Jarvis, por onde sai a voz dele (por exemplo a soundbar), sem mexer no som do Windows. A escolha fica salva. A voz reserva do navegador (a que só aparece quando as outras falham, por exemplo com a internet ruim) sempre sai no som padrão do Windows.
 
 O microfone não dá para escolher dentro do Jarvis: o reconhecimento de voz do Edge sempre usa o microfone padrão do Windows. Para usar o do headset, vá em Configurações > Sistema > Som > **Entrada** e escolha o headset. Isso muda só o microfone; o som continua saindo onde já estava.
 
@@ -91,6 +102,9 @@ Na primeira vez, o `.env` da pasta é copiado para a pasta de dados (`%APPDATA%\
 server.js         servidor HTTP: serve o app, faz streaming das respostas e da voz neural
 dados.js          pasta de dados do usuário (.env, modos, Spotify, rotina) fora da pasta do programa
 atualizar.js      atualização automática pelo GitHub, rodada pelo atalho antes de abrir
+rede.js           ajustes de conexão para redes lentas e motivo das falhas em português
+diagnostico.js    botão Rodar diagnóstico (testa internet, cérebro, vozes e Spotify)
+chaves.js         trocar chaves pela tela Ajustes e reiniciar o servidor
 brain.js          cérebro (Claude, Groq ou Gemini), personalidade e o laço de ferramentas
 speech.js         voz gerada no servidor (Microsoft neural grátis ou ElevenLabs)
 tools.js          ações no computador; para incluir um programa, edite PROGRAMAS e FECHAVEIS

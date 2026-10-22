@@ -22,7 +22,7 @@
 
     <nav class="panels">
       <button id="modesToggle" class="ghost" aria-pressed="false" title="Criar modos como trabalho e game">Modos</button>
-      <button id="audioToggle" class="ghost" aria-pressed="false" title="Escolher por onde sai a voz do Jarvis">Áudio</button>
+      <button id="audioToggle" class="ghost" aria-pressed="false" title="Som, diagnóstico e ajustes">Ajustes</button>
       <button id="chatToggle" class="ghost" aria-pressed="false" title="Mostrar a conversa escrita">Chat</button>
     </nav>
     <aside class="chatbox" aria-label="Conversa escrita">
@@ -69,8 +69,31 @@
       </form>
     </aside>
 
-    <aside class="audiobox" aria-label="Áudio">
-      <h2>Áudio</h2>
+    <aside class="audiobox" aria-label="Ajustes">
+      <h2>Diagnóstico</h2>
+      <p class="hint">Testa a internet, o cérebro, as vozes e o Spotify e mostra o que está falhando.</p>
+      <div class="row"><button type="button" id="diagRun">Rodar diagnóstico</button></div>
+      <ul id="diagList" class="diag"></ul>
+      <h2>Chaves e voz</h2>
+      <p class="hint">Cole uma chave nova só se quiser trocar. Ao salvar, o Jarvis reinicia sozinho.</p>
+      <form id="keysForm" class="keys">
+        <label>Groq (cérebro) <small id="k_GROQ_API_KEY"></small><input name="GROQ_API_KEY" autocomplete="off" placeholder="gsk_..." /></label>
+        <label>ElevenLabs (voz principal) <small id="k_ELEVENLABS_API_KEY"></small><input name="ELEVENLABS_API_KEY" autocomplete="off" placeholder="sk_..." /></label>
+        <label>Voz da ElevenLabs
+          <select name="JARVIS_VOZ">
+            <option value="daniel">Daniel: britânico, sério</option>
+            <option value="george">George: britânico, caloroso</option>
+            <option value="brian">Brian: americano, grave</option>
+            <option value="alice">Alice: britânica (feminina)</option>
+            <option value="lily">Lily: britânica, suave (feminina)</option>
+          </select>
+        </label>
+        <label>Azure Speech (voz reserva oficial, grátis) <small id="k_AZURE_SPEECH_KEY"></small><input name="AZURE_SPEECH_KEY" autocomplete="off" placeholder="chave 1 do recurso Speech" /></label>
+        <label>Região da Azure<input name="AZURE_SPEECH_REGION" autocomplete="off" placeholder="brazilsouth" /></label>
+        <div class="row"><button type="submit">Salvar e reiniciar</button></div>
+        <p id="keysMsg" class="modemsg" role="status"></p>
+      </form>
+      <h2>Som</h2>
       <label>Saída da voz do Jarvis<select id="outSel"></select></label>
       <div class="row"><button type="button" id="audioTest">Testar voz</button></div>
       <p id="audioMsg" class="modemsg" role="status"></p>

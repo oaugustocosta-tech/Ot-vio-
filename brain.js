@@ -3,6 +3,7 @@
 // Todos recebem as mesmas ferramentas de tools.js.
 import Anthropic from "@anthropic-ai/sdk";
 import { TOOLS, runTool } from "./tools.js";
+import { motivoRede } from "./rede.js";
 import { loadModes } from "./modos.js";
 
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
@@ -370,6 +371,6 @@ export function describeError(err) {
   if (err instanceof BrainError) return err.message;
   const claude = describeClaudeError(err);
   if (claude) return claude;
-  if (err?.cause?.code === "ENOTFOUND" || /fetch failed/i.test(err?.message)) return "Sem conexão com a internet.";
+  if (err?.cause || /fetch failed/i.test(err?.message) || err?.name === "TimeoutError") return `Não consegui falar com o cérebro: ${motivoRede(err)}.`;
   return String(err?.message || err);
 }

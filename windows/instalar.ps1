@@ -115,6 +115,25 @@ if (-not (TemChave "ELEVENLABS_API_KEY")) {
   }
 }
 
+# Voz reserva oficial: Azure Speech (Microsoft), grátis até ~9 horas de fala por mês.
+if (-not (TemChave "AZURE_SPEECH_KEY")) {
+  $quer = Read-Host "`nQuer uma voz reserva oficial e estável (Azure da Microsoft, grátis até ~9 horas por mês)? (S/N)"
+  if ($quer -match '^[sS]') {
+    Write-Host "Vou abrir o portal da Azure. Entre (ou crie a conta grátis), clique em 'Criar', escolha"
+    Write-Host "Região 'Brazil South' e o Tipo de preço 'Free F0'. Depois de criado, abra 'Chaves e Ponto de Extremidade'"
+    Write-Host "e copie a 'CHAVE 1'."
+    Start-Process "https://portal.azure.com/#create/Microsoft.CognitiveServicesSpeechServices"
+    $chave = (Read-Host "`nCole a chave da Azure aqui e aperte Enter").Trim()
+    if ($chave) {
+      SalvarChave "AZURE_SPEECH_KEY" $chave
+      $regiao = (Read-Host "Região (só Enter para brazilsouth)").Trim().ToLower() -replace '\s', ''
+      if (-not $regiao) { $regiao = "brazilsouth" }
+      SalvarChave "AZURE_SPEECH_REGION" $regiao
+      Write-Host "Chave salva." -ForegroundColor Green
+    }
+  }
+}
+
 # Qual voz da ElevenLabs usar (só pergunta se tiver a chave).
 if (TemChave "ELEVENLABS_API_KEY") {
   Write-Host "`nVozes no estilo Jarvis (todas falam português):" -ForegroundColor Cyan

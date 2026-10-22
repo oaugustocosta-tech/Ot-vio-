@@ -1,4 +1,5 @@
 import { DADOS, dado } from "./dados.js"; // primeiro: carrega as chaves do .env
+import "./rede.js";
 import http from "node:http";
 import fs from "node:fs";
 import { runPs } from "./windows.js";
@@ -12,6 +13,8 @@ import { listStartApps } from "./apps.js";
 import { PROGRAMAS, FECHAVEIS, runMode } from "./tools.js";
 import { CORES } from "./led.js";
 import * as spotify from "./spotify.js";
+import { diagnostico } from "./diagnostico.js";
+import { lerChaves, salvarChaves, reiniciar } from "./chaves.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
@@ -217,6 +220,17 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "POST" && !fromJarvis(req)) return sendJson(res, 403, { error: "Pedido recusado." });
     if (req.url === "/api/modos" && (req.method === "GET" || req.method === "POST")) return await handleModes(req, res);
+    if (req.url === "/api/chaves" && req.method === "GET") return sendJson(res, 200, lerChaves());
+    if (req.url === "/api/chaves" && req.method === "POST") {
+      try {
+        salvarChaves(await readJson(req));
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+      sendJson(res, 200, { ok: true });
+      return reiniciar();
+    }
+    if (req.method === "GET" && req.url === "/api/diagnostico") return sendJson(res, 200, await diagnostico());
     if (req.method === "GET" && req.url === "/api/apps") return sendJson(res, 200, await listStartApps());
     if (req.method === "POST" && req.url === "/api/modos/testar") {
       const { nome } = await readJson(req);
@@ -248,6 +262,12 @@ const server = http.createServer(async (req, res) => {
 });
 
 // Só nesta máquina: ninguém da rede consegue falar com o Jarvis.
+// Logo depois de reiniciar (troca de chave), o servidor antigo pode ainda estar soltando a porta.
+let tentativasPorta = 0;
+server.on("error", (err) => {
+  if (err.code !== "EADDRINUSE" || ++tentativasPorta > 20) throw err;
+  setTimeout(() => server.listen(PORT, "127.0.0.1"), 250);
+});
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`\n  JARVIS online → http://127.0.0.1:${PORT}`);
   console.log(`  Cérebro: ${BRAIN_LABEL}`);
