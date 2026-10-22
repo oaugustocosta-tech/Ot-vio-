@@ -85,7 +85,9 @@ function explainEleven(status, body) {
   } catch {}
   const msgs = {
     missing_permissions: "A chave da ElevenLabs está sem permissão de Text to Speech. No site da ElevenLabs, em API Keys, edite a chave e libere Text to Speech.",
-    invalid_api_key: "A chave da ElevenLabs é inválida. Rode o instalar.bat e cole a chave de novo.",
+    invalid_api_key: "A chave da ElevenLabs é inválida. Cole a chave de novo em Ajustes.",
+    api_key_id_used_as_api_key:
+      "O que está salvo é o ID da chave da ElevenLabs, não a chave. Crie uma chave nova no site (API Keys), copie a chave inteira que começa com sk_ (ela só aparece uma vez) e cole em Ajustes.",
     quota_exceeded: "Os créditos grátis da ElevenLabs deste mês acabaram.",
     detected_unusual_activity: "A ElevenLabs bloqueou o plano grátis desta conta por atividade incomum (VPN, por exemplo).",
     voice_not_found: "A voz escolhida não existe na sua conta da ElevenLabs.",
