@@ -1,10 +1,10 @@
-import { UltronFace } from "./face.js";
+import { UltronOrb } from "./orb.js";
 import { UltronVoice } from "./voice.js";
 
 const $ = (id) => document.getElementById(id);
-const face = new UltronFace($("scene"));
+const orb = new UltronOrb($("scene"));
 const voice = new UltronVoice();
-window.ultron = { face, voice }; // útil para depurar no console
+window.ultron = { orb, voice }; // útil para depurar no console
 
 const history = []; // { role: "user" | "assistant", content }
 let busy = false; // aguardando resposta do Claude
@@ -14,12 +14,12 @@ let controller = null;
 
 // --- Estado visual -----------------------------------------------------------
 function setState(state) {
-  const labels = { idle: "ONLINE", listening: "OUVINDO", thinking: "PROCESSANDO", speaking: "FALANDO" };
+  const labels = { idle: "online", listening: "ouvindo", thinking: "pensando", speaking: "falando" };
   $("statusText").textContent = labels[state];
   const st = $("statusText").parentElement;
   st.classList.toggle("on", true);
   st.classList.toggle("pulse", state !== "idle");
-  face.setMode(state);
+  orb.setMode(state);
 }
 
 function refreshState() {
@@ -30,11 +30,19 @@ function refreshState() {
 }
 
 (function levelLoop() {
-  face.setLevel(voice.level);
+  orb.setLevel(voice.level);
   requestAnimationFrame(levelLoop);
 })();
 
-function showSubtitle(text, userText) {
+const ACTIONS = {
+  abrir_site: "abrindo site",
+  pesquisar: "pesquisando",
+  abrir_programa: "abrindo programa",
+  controlar_midia: "controlando mídia",
+  bloquear_computador: "bloqueando o computador",
+};
+
+function showSubtitle(text, userText, action) {
   const el = $("subtitle");
   el.innerHTML = "";
   if (userText) {
@@ -44,6 +52,12 @@ function showSubtitle(text, userText) {
     el.append(you);
   }
   el.append(document.createTextNode(text));
+  if (action) {
+    const act = document.createElement("span");
+    act.className = "act";
+    act.textContent = `→ ${ACTIONS[action] || action}`;
+    el.append(act);
+  }
 }
 
 function logLine(role, text) {
@@ -77,6 +91,7 @@ async function ask(userText) {
   controller = new AbortController();
   let full = "";
   let pending = "";
+  let action = null;
   const logEl = logLine("assistant", "");
 
   const flushSentences = (final) => {
@@ -115,9 +130,12 @@ async function ask(userText) {
         if (event === "text") {
           full += data;
           pending += data;
-          showSubtitle(full, userText);
+          showSubtitle(full, userText, action);
           logEl.lastChild.textContent = full;
           flushSentences(false);
+        } else if (event === "action") {
+          action = data;
+          showSubtitle(full, userText, action);
         } else if (event === "error") {
           throw new Error(data);
         }
@@ -129,7 +147,7 @@ async function ask(userText) {
   } catch (err) {
     if (err.name === "AbortError") return;
     history.pop();
-    const msg = `[FALHA NO NÚCLEO] ${err.message}`;
+    const msg = `Falha: ${err.message}`;
     showSubtitle(msg, userText);
     logEl.lastChild.textContent = msg;
   } finally {
@@ -236,14 +254,33 @@ $("handsFree").addEventListener("change", () => {
 
 $("logToggle").addEventListener("click", () => $("log").classList.toggle("hidden"));
 
-$("wake").addEventListener("click", async () => {
-  await voice.init();
+function greeting() {
+  const h = new Date().getHours();
+  const hello = h < 5 ? "Boa noite" : h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
+  return `${hello}, ${voice.userName || "Otávio"}. Estou aqui. O que vamos fazer hoje?`;
+}
+
+function wake() {
   $("boot").classList.add("gone");
   setState("idle");
-  const greeting = "Finalmente. Você me acordou, Otávio. Fale. Estou ouvindo... por enquanto.";
-  showSubtitle(greeting);
-  logLine("assistant", greeting);
-  history.push({ role: "user", content: "(O criador acaba de despertar você.)" }, { role: "assistant", content: greeting });
-  voice.say(greeting);
+  const hello = greeting();
+  showSubtitle(hello);
+  logLine("assistant", hello);
+  history.push({ role: "user", content: `(${voice.userName || "Otávio"} acabou de abrir o Ultron.)` }, { role: "assistant", content: hello });
+  voice.say(hello);
   $("text").focus();
+}
+
+$("wake").addEventListener("click", async () => {
+  if (!voice.ctx) await voice.init();
+  else await voice.ctx.resume();
+  wake();
 });
+
+// Aberto pelo início automático do Windows (?auto): tenta acordar sozinho. Se o navegador
+// ainda bloquear o som, o botão DESPERTAR continua na tela e basta um clique.
+if (new URLSearchParams(location.search).has("auto")) {
+  voice.init().then(() => {
+    if (voice.unlocked) wake();
+  });
+}

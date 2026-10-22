@@ -2,7 +2,7 @@
   "name": "ultron",
   "version": "1.0.0",
   "private": true,
-  "description": "Ultron — rosto 3D de IA com voz grave, conversando via Claude",
+  "description": "Ultron — assistente pessoal de voz em forma de orbe, que conversa e executa ações no computador",
   "type": "module",
   "scripts": {
     "start": "node --env-file-if-exists=.env server.js"
@@ -11,7 +11,6 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.128.0",
-    "three": "^0.186.1"
+    "@anthropic-ai/sdk": "^0.128.0"
   }
 }

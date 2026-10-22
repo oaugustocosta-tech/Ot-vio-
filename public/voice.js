@@ -1,29 +1,11 @@
 // Voz do Ultron.
-// - Com ELEVENLABS_API_KEY no servidor: voz neural grave, rebaixada e passada por uma
-//   cadeia de efeitos (modulação em anel metálica, saturação, reverb de catedral).
-// - Sem chave: voz do navegador no tom mais grave possível + ronco sub-grave sintetizado.
+// - Com ELEVENLABS_API_KEY no servidor: voz neural da ElevenLabs, tocada pelo Web Audio
+//   (assim a orbe acompanha o volume real da fala).
+// - Sem chave: voz do navegador. No Microsoft Edge as vozes "Natural" (Antonio, Francisca...)
+//   são neurais e gratuitas; é a melhor opção sem pagar nada.
 
-const MALE_PT = /antonio|daniel|ricardo|felipe|duarte|thiago|fabio|donato|julio|humberto|valerio|nicolau|male|masculin/i;
-
-function impulse(ctx, seconds, decay) {
-  const len = ctx.sampleRate * seconds;
-  const buf = ctx.createBuffer(2, len, ctx.sampleRate);
-  for (let ch = 0; ch < 2; ch++) {
-    const d = buf.getChannelData(ch);
-    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** decay;
-  }
-  return buf;
-}
-
-function saturation(amount) {
-  const n = 1024;
-  const curve = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    const x = (i / (n - 1)) * 2 - 1;
-    curve[i] = ((1 + amount) * x) / (1 + amount * Math.abs(x));
-  }
-  return curve;
-}
+// Ordem de preferência das vozes do navegador.
+const PREFERRED = [/antonio.*natural/i, /natural/i, /google.*portugu[eê]s.*brasil/i, /daniel|ricardo|felipe/i];
 
 export class UltronVoice {
   constructor() {
@@ -39,82 +21,21 @@ export class UltronVoice {
     const ctx = (this.ctx = new AudioContext());
     await ctx.resume();
 
-    // Entrada da voz neural.
     this.input = ctx.createGain();
-
-    // Graves encorpados.
-    const lowShelf = ctx.createBiquadFilter();
-    lowShelf.type = "lowshelf";
-    lowShelf.frequency.value = 180;
-    lowShelf.gain.value = 7;
-    const presence = ctx.createBiquadFilter();
-    presence.type = "peaking";
-    presence.frequency.value = 2400;
-    presence.gain.value = 3;
-
-    // Modulação em anel -> timbre metálico/robótico.
-    const ring = ctx.createGain();
-    ring.gain.value = 0;
-    const carrier = ctx.createOscillator();
-    carrier.frequency.value = 48;
-    carrier.connect(ring.gain);
-    carrier.start();
-    const ringMix = ctx.createGain();
-    ringMix.gain.value = 0.45;
-
-    const dry = ctx.createGain();
-    dry.gain.value = 0.9;
-
-    const shaper = ctx.createWaveShaper();
-    shaper.curve = saturation(2.2);
-    shaper.oversample = "4x";
-
-    const reverb = ctx.createConvolver();
-    reverb.buffer = impulse(ctx, 2.8, 2.5);
-    const wet = ctx.createGain();
-    wet.gain.value = 0.28;
-
     const comp = ctx.createDynamicsCompressor();
-    comp.threshold.value = -20;
-    comp.ratio.value = 4;
-
+    comp.threshold.value = -18;
+    comp.ratio.value = 3;
     this.analyser = ctx.createAnalyser();
     this.analyser.fftSize = 1024;
     this.buf = new Float32Array(this.analyser.fftSize);
-
-    this.input.connect(lowShelf);
-    lowShelf.connect(presence);
-    presence.connect(dry);
-    presence.connect(ring);
-    ring.connect(ringMix);
-    dry.connect(shaper);
-    ringMix.connect(shaper);
-    shaper.connect(comp);
-    shaper.connect(reverb);
-    reverb.connect(wet);
-    wet.connect(comp);
+    this.input.connect(comp);
     comp.connect(this.analyser);
     this.analyser.connect(ctx.destination);
-
-    // Ronco sub-grave: hum ambiente baixo que cresce quando ele fala.
-    this.rumble = ctx.createGain();
-    this.rumble.gain.value = 0.015;
-    const lp = ctx.createBiquadFilter();
-    lp.type = "lowpass";
-    lp.frequency.value = 120;
-    for (const f of [38, 38.6, 57]) {
-      const o = ctx.createOscillator();
-      o.type = "sawtooth";
-      o.frequency.value = f;
-      o.connect(lp);
-      o.start();
-    }
-    lp.connect(this.rumble);
-    this.rumble.connect(ctx.destination);
 
     try {
       const cfg = await (await fetch("/api/config")).json();
       this.neural = Boolean(cfg.neuralVoice);
+      this.userName = cfg.name;
     } catch {
       this.neural = false;
     }
@@ -125,31 +46,38 @@ export class UltronVoice {
     }
   }
 
-  pickBrowserVoice() {
-    const voices = speechSynthesis.getVoices();
-    const pt = voices.filter((v) => v.lang?.toLowerCase().startsWith("pt"));
-    this.browserVoice =
-      pt.find((v) => MALE_PT.test(v.name) && v.lang.toLowerCase() === "pt-br") ||
-      pt.find((v) => MALE_PT.test(v.name)) ||
-      pt.find((v) => v.lang.toLowerCase() === "pt-br") ||
-      pt[0] ||
-      null;
+  // O navegador pode bloquear som até o primeiro clique; diz se o áudio está liberado.
+  get unlocked() {
+    return this.ctx?.state === "running";
   }
 
-  // Nível instantâneo da fala (0..1) para animar a mandíbula.
+  pickBrowserVoice() {
+    const voices = speechSynthesis.getVoices();
+    const br = voices.filter((v) => v.lang?.toLowerCase().replace("_", "-") === "pt-br");
+    const pt = br.length ? br : voices.filter((v) => v.lang?.toLowerCase().startsWith("pt"));
+    this.browserVoice = null;
+    for (const re of PREFERRED) {
+      this.browserVoice = pt.find((v) => re.test(v.name));
+      if (this.browserVoice) break;
+    }
+    this.browserVoice ??= pt[0] || null;
+  }
+
+  // Nível instantâneo da fala (0..1) para animar a orbe.
   get level() {
     if (!this.analyser) return 0;
     if (this.mode === "browser") {
-      this.simLevel *= 0.9;
-      return Math.min(1, this.simLevel + (this.busy ? 0.15 + Math.random() * 0.25 : 0));
+      // A voz do navegador não passa pelo Web Audio: simula o ritmo das sílabas.
+      this.simLevel *= 0.88;
+      if (!this.busy) return this.simLevel;
+      const t = performance.now() / 1000;
+      const syll = Math.max(0, Math.sin(t * 11) * 0.5 + Math.sin(t * 17.3) * 0.35 + 0.2);
+      return Math.min(1, Math.max(this.simLevel, syll * 0.75));
     }
     this.analyser.getFloatTimeDomainData(this.buf);
     let sum = 0;
     for (const v of this.buf) sum += v * v;
-    const rms = Math.sqrt(sum / this.buf.length);
-    const lvl = Math.min(1, rms * 4.5);
-    this.rumble.gain.setTargetAtTime(0.015 + lvl * 0.07, this.ctx.currentTime, 0.05);
-    return lvl;
+    return Math.min(1, Math.sqrt(sum / this.buf.length) * 4.5);
   }
 
   say(text) {
@@ -200,7 +128,6 @@ export class UltronVoice {
     return new Promise((resolve) => {
       const src = this.ctx.createBufferSource();
       src.buffer = buffer;
-      src.playbackRate.value = 0.87; // rebaixa o tom
       src.connect(this.input);
       src.onended = resolve;
       this.current = src;
@@ -215,23 +142,21 @@ export class UltronVoice {
       const u = new SpeechSynthesisUtterance(text);
       u.lang = this.browserVoice?.lang || "pt-BR";
       if (this.browserVoice) u.voice = this.browserVoice;
-      u.pitch = 0; // o mais grave que o navegador permite
-      u.rate = 0.82;
+      u.pitch = 1;
+      u.rate = 1.05;
       u.volume = 1;
-      u.onstart = () => this.rumble.gain.setTargetAtTime(0.09, this.ctx.currentTime, 0.2);
       u.onboundary = () => (this.simLevel = 0.9);
       let finished = false;
       const done = () => {
         if (finished) return;
         finished = true;
-        this.rumble.gain.setTargetAtTime(0.015, this.ctx.currentTime, 0.4);
         resolve();
       };
       u.onend = done;
       u.onerror = done;
       speechSynthesis.speak(u);
       // Salvaguarda caso o navegador nunca dispare onend.
-      setTimeout(done, 2000 + text.length * 130);
+      setTimeout(done, 2500 + text.length * 110);
     });
   }
 
