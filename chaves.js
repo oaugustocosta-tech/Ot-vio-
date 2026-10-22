@@ -6,7 +6,7 @@ import { dado, AMBIENTE_ORIGINAL } from "./dados.js";
 
 export const EDITAVEIS = {
   GROQ_API_KEY: /^gsk_\w{20,}$/,
-  ELEVENLABS_API_KEY: /^(sk_)?\w{20,}$/,
+  ELEVENLABS_API_KEY: /^sk_\w{20,}$/, // o ID da chave (sem sk_) não serve
   AZURE_SPEECH_KEY: /^\w{20,}$/,
   AZURE_SPEECH_REGION: /^[a-z0-9]{3,30}$/,
   JARVIS_VOZ: /^(daniel|george|brian|alice|lily)$/,
