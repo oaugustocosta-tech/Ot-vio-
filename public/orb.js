@@ -1,219 +1,317 @@
-// Núcleo do Jarvis no estilo holograma do Jarvis: reator laranja e dourado com anéis
-// segmentados girando, fragmentos de dados, filamentos de energia e um núcleo que pulsa com a voz.
-// WebGL puro, sem dependências. Interface: new JarvisOrb(canvas), setMode(estado), setLevel(0..1).
-
+// Núcleo de energia do Jarvis em 3D: uma esfera de linhas laranja entrelaçadas, raios que saem
+// do centro e faíscas em volta. Quando ele fala, a esfera estufa, as linhas tremem e os raios
+// se esticam no ritmo da voz; depois tudo volta ao lugar.
+// WebGL2 puro, sem bibliotecas. Interface: setMode(modo) e setLevel(0..1).
 const VERT = `#version 300 es
-in vec2 a;
-void main() { gl_Position = vec4(a, 0.0, 1.0); }`;
-
-const FRAG = `#version 300 es
-precision highp float;
-uniform vec2 uRes;
-uniform float uTime;
-uniform float uLevel;   // volume da fala, suavizado
-uniform float uFlow;    // rotação acumulada (mais rápida quando pensa)
-uniform float uEnergy;  // brilho geral do estado
-uniform float uRing;    // pulso de "ouvindo"
-out vec4 outColor;
-
-const float PI = 3.14159265;
-const vec3 EMBER = vec3(0.55, 0.16, 0.02);
-const vec3 AMBER = vec3(1.0, 0.48, 0.08);
-const vec3 GOLD  = vec3(1.0, 0.74, 0.32);
-const vec3 HOT   = vec3(1.0, 0.93, 0.78);
-
-float hash(float n) { return fract(sin(n * 127.1) * 43758.5453); }
-float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float noise(vec2 p) {
-  vec2 i = floor(p), f = fract(p);
-  f = f * f * (3.0 - 2.0 * f);
-  return mix(mix(hash2(i), hash2(i + vec2(1, 0)), f.x), mix(hash2(i + vec2(0, 1)), hash2(i + vec2(1, 1)), f.x), f.y);
+in vec3 aPos;
+in vec4 aSeed; // x: semente, y: posição ao longo do raio (0 centro, 1 ponta), z: tipo, w: brilho
+uniform mat4 uMVP;
+uniform float uTime, uBreak, uEnergy, uLift, uDpr;
+out float vA;
+out float vKind;
+out float vT;
+vec3 wobble(vec3 p, float s) {
+  return vec3(sin(p.y * 3.1 + uTime * 1.3 + s * 11.0),
+              sin(p.z * 2.7 + uTime * 1.1 + s * 7.0),
+              sin(p.x * 3.3 + uTime * 0.9 + s * 5.0));
 }
-float fbm(vec2 p) {
-  float v = 0.0, a = 0.5;
-  for (int i = 0; i < 4; i++) { v += a * noise(p); p = p * 2.1 + 3.7; a *= 0.5; }
-  return v;
-}
-float band(float x, float c, float w) { return exp(-pow((x - c) / w, 2.0)); }
-
 void main() {
-  vec2 p = (gl_FragCoord.xy - 0.5 * uRes) / min(uRes.x, uRes.y) - vec2(0.0, 0.05);
-  float R = 0.2 * (1.0 + 0.07 * uLevel);
-  float r = length(p) / R;
-  float ang = atan(p.y, p.x);
-  float u = ang / (2.0 * PI) + 0.5;
-  float t = uTime;
-  vec3 col = vec3(0.0);
-
-  // Disco de fundo, bem fraco, como a lente do holograma.
-  col += EMBER * 0.08 * smoothstep(1.5, 1.44, r) * smoothstep(0.3, 1.45, r);
-
-  // Anel externo fino com marcações de régua.
-  col += GOLD * 0.55 * band(r, 1.42, 0.006);
-  float tick = step(fract(u * 180.0 + uFlow * 0.02), 0.22) * step(1.30, r) * step(r, 1.36);
-  float bigTick = step(fract(u * 36.0 + uFlow * 0.02), 0.06) * step(1.27, r) * step(r, 1.38);
-  col += AMBER * (tick * 0.35 + bigTick * 0.6);
-
-  // Varredura: um feixe que gira pelos anéis.
-  float sweep = fract(u - uFlow * 0.06);
-  col += AMBER * exp(-sweep * 30.0) * 0.18 * band(r, 1.0, 0.3);
-
-  // Anéis segmentados girando em sentidos alternados.
-  for (int i = 0; i < 5; i++) {
-    float fi = float(i);
-    float ri = 0.5 + 0.17 * fi;
-    float dir = mod(fi, 2.0) < 0.5 ? 1.0 : -1.0;
-    float n = 18.0 + fi * 14.0;
-    float x = (u + dir * uFlow * (0.03 + 0.012 * fi)) * n;
-    float seg = floor(x);
-    float f = fract(x);
-    float on = step(0.45, hash(seg + fi * 31.0));
-    float duty = 0.35 + 0.55 * hash(seg + fi * 17.0);
-    float w = 0.004 + 0.012 * hash(seg + fi * 5.0);
-    float wob = 0.025 * sin(seg * 1.7 + t * 1.3) + 0.06 * uLevel * sin(seg * 3.1 + t * 9.0);
-    float m = band(r, ri + wob, w) * step(f, duty) * on;
-    col += mix(AMBER, HOT, 0.6 * hash(seg + fi * 3.0)) * m * (0.9 + 1.2 * uLevel) * (0.75 + 0.35 * uRing);
+  float s = aSeed.x;
+  float kind = aSeed.z;
+  float a = aSeed.w;
+  vec3 p = aPos;
+  if (kind < 0.5) {
+    // Linhas da esfera: respiram, tremem e estufam com a voz.
+    float r = 1.0 + 0.05 * sin(uTime * 0.8 + s * 20.0) + uBreak * 0.32 * (0.35 + s);
+    p = p * r + wobble(p, s) * (0.02 + uBreak * 0.14);
+  } else if (kind < 1.5) {
+    // Raios: crescem e encolhem, piscam e esticam quando ele fala.
+    float len = (1.0 + 0.9 * s) * (0.55 + 0.45 * sin(uTime * (0.6 + s) + s * 30.0)) * (1.0 + uBreak * 1.1);
+    p = aPos * aSeed.y * len;
+    a *= 0.55 + 0.45 * sin(uTime * (3.0 + 6.0 * s) + s * 50.0);
+  } else {
+    // Faíscas em volta.
+    p = p * (1.0 + uBreak * 0.6 * s) + wobble(p * 2.0, s) * 0.05;
+    a *= 0.45 + 0.55 * sin(uTime * (1.5 + 3.0 * s) + s * 40.0);
   }
-
-  // Fragmentos de dados: traços curtos tangenciais, mais densos perto da borda da esfera.
-  for (int k = 0; k < 2; k++) {
-    float fk = float(k);
-    vec2 g = vec2((u + uFlow * (0.01 + 0.02 * fk)) * (160.0 + 90.0 * fk), r * (26.0 + 10.0 * fk));
-    vec2 cell = floor(g);
-    vec2 fr = fract(g);
-    float h = hash2(cell + fk * 9.0);
-    float alive = step(0.82 - 0.12 * uLevel, h);
-    float len = 0.3 + 0.6 * hash2(cell + 4.0);
-    float dash = step(fr.x, len) * band(fr.y, 0.5, 0.12);
-    float shell = smoothstep(0.55, 0.95, r) * smoothstep(1.32, 1.02, r);
-    float flick = 0.5 + 0.5 * sin(t * (2.0 + 6.0 * h) + h * 50.0);
-    col += mix(AMBER, HOT, h * h) * alive * dash * shell * flick * 1.6;
-  }
-
-  // Plasma: textura de fogo na casca do reator.
-  float plasma = fbm(vec2(ang * 2.5 + uFlow * 0.08, r * 4.0 - t * 0.5));
-  col += mix(EMBER, AMBER, plasma) * pow(plasma, 3.0) * 1.6 * band(r, 0.95, 0.28) * (0.8 + uLevel);
-
-  // Esfera em malha (latitude e longitude) girando lentamente dentro do reator.
-  if (r < 1.0) {
-    vec2 q = p / (R * 1.0);
-    float z = sqrt(max(0.0, 1.0 - dot(q, q)));
-    float lon = atan(q.x, z) + uFlow * 0.15;
-    float lat = asin(clamp(q.y, -1.0, 1.0));
-    float grid = band(fract(lon * 12.0 / PI), 0.5, 0.04) + band(fract(lat * 10.0 / PI), 0.5, 0.04);
-    col += AMBER * grid * 0.12 * z * uEnergy;
-  }
-
-  // Filamentos de energia girando em volta do núcleo.
-  float warp = fbm(vec2(ang * 1.5, r * 3.0 - t * 0.4) + uFlow * 0.05);
-  for (int j = 0; j < 3; j++) {
-    float fj = float(j);
-    float l = abs(sin(ang * (2.0 + fj) + r * (6.0 + 2.0 * fj) - uFlow * (0.6 + 0.2 * fj) + warp * 4.0));
-    col += mix(GOLD, HOT, 0.4) * pow(1.0 - l, 40.0) * smoothstep(0.9, 0.12, r) * (0.35 + 0.9 * uLevel);
-  }
-
-  // Núcleo.
-  float core = exp(-r * r * 9.0) * (0.75 + 1.8 * uLevel) + exp(-r * 2.6) * 0.3;
-  col += mix(AMBER, HOT, smoothstep(0.0, 0.8, exp(-r * r * 9.0))) * core;
-  col += AMBER * exp(-r * 1.1) * 0.12 * (1.0 + uLevel); // brilho difuso
-
-  // Poeira ao fundo.
-  float st = hash2(floor(gl_FragCoord.xy / 3.0));
-  col += GOLD * step(0.9985, st) * (0.4 + 0.4 * sin(t * 2.0 + st * 60.0)) * 0.5;
-
-  col *= uEnergy * 1.35;
-  col = col / (1.0 + col * 0.6);
-  outColor = vec4(pow(col, vec3(0.95)), 1.0);
+  gl_Position = uMVP * vec4(p, 1.0);
+  gl_Position.y += uLift * gl_Position.w;
+  gl_PointSize = (1.0 + 2.0 * s) * uDpr;
+  vA = a * uEnergy;
+  vKind = kind;
+  vT = aSeed.y;
 }`;
 
-// energia (brilho), velocidade de giro e pulso de "ouvindo" por estado.
+const FRAG = `#version 300 es
+precision mediump float;
+in float vA;
+in float vKind;
+in float vT;
+out vec4 o;
+void main() {
+  vec3 col;
+  float a = vA;
+  if (vKind < 0.5) {
+    col = vec3(1.0, 0.5, 0.1);
+  } else if (vKind < 1.5) {
+    col = mix(vec3(1.0, 0.85, 0.5), vec3(1.0, 0.38, 0.05), vT);
+    a *= 1.0 - vT * 0.7;
+  } else {
+    float d = length(gl_PointCoord - 0.5);
+    a *= smoothstep(0.5, 0.0, d);
+    col = vec3(1.0, 0.72, 0.3);
+  }
+  o = vec4(col * a, 1.0);
+}`;
+
+// Brilho do núcleo, desenhado num triângulo que cobre a tela.
+const CORE_VERT = `#version 300 es
+const vec2 P[3] = vec2[](vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0));
+void main() { gl_Position = vec4(P[gl_VertexID], 0.0, 1.0); }`;
+
+const CORE_FRAG = `#version 300 es
+precision mediump float;
+uniform vec2 uCenter;
+uniform float uRadius, uPower, uTime;
+out vec4 o;
+void main() {
+  float d = length(gl_FragCoord.xy - uCenter) / uRadius;
+  float flick = 0.93 + 0.07 * sin(uTime * 23.0) * sin(uTime * 7.0);
+  float hot = exp(-d * d * 40.0) * 1.6;
+  float halo = exp(-d * 4.0) * 0.45 + exp(-d * 1.3) * 0.08;
+  vec3 col = vec3(1.0, 0.9, 0.55) * hot + vec3(1.0, 0.42, 0.06) * halo;
+  o = vec4(col * uPower * flick, 1.0);
+}`;
+
 const MODES = {
-  sleep:     { energy: 0.35, speed: 0.2, ring: 0 },
-  idle:      { energy: 0.9, speed: 0.6, ring: 0 },
-  listening: { energy: 1.1, speed: 0.9, ring: 1 },
-  thinking:  { energy: 1.05, speed: 3.2, ring: 0.4 },
-  speaking:  { energy: 1.15, speed: 1.0, ring: 0 },
+  sleep: { energy: 0.35, speed: 0.2, brk: 0, core: 0.4 },
+  idle: { energy: 0.85, speed: 0.45, brk: 0, core: 0.85 },
+  listening: { energy: 1.1, speed: 0.7, brk: 0.08, core: 1.1 },
+  thinking: { energy: 1.0, speed: 2.4, brk: 0.15, core: 0.95 },
+  speaking: { energy: 1.15, speed: 0.7, brk: 0.04, core: 1.0 },
 };
 
-const lerp = (a, b, t) => a + (b - a) * t;
+const LOOPS = 30;
+const LOOP_STEPS = 140;
+const RAYS = 26;
+const SPARKS = 2200;
+
+// Monta tudo num buffer só: linhas da esfera e raios (desenhados como LINES) e faíscas (POINTS).
+function buildGeometry() {
+  const R = Math.random;
+  const pos = [];
+  const seed = [];
+  const randDir = () => {
+    const z = R() * 2 - 1, a = R() * Math.PI * 2, r = Math.sqrt(1 - z * z);
+    return [r * Math.cos(a), r * Math.sin(a), z];
+  };
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const norm = (v) => { const l = Math.hypot(...v); return v.map((x) => x / l); };
+
+  // Círculos em orientações aleatórias, alguns achatados ou em espiral, para parecer emaranhado.
+  for (let i = 0; i < LOOPS; i++) {
+    const n = randDir();
+    const u = norm(cross(n, Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]));
+    const v = cross(n, u);
+    const s = R();
+    const squash = 0.75 + R() * 0.25;
+    const twist = (R() - 0.5) * 0.5;
+    const radius = 0.82 + R() * 0.2;
+    const point = (k) => {
+      const t = (k / LOOP_STEPS) * Math.PI * 2;
+      const c = Math.cos(t) * radius, sn = Math.sin(t) * radius * squash;
+      const lift = Math.sin(t * 2 + s * 6) * twist;
+      return [0, 1, 2].map((j) => u[j] * c + v[j] * sn + n[j] * lift);
+    };
+    for (let k = 0; k < LOOP_STEPS; k++) {
+      pos.push(...point(k), ...point(k + 1));
+      seed.push(s, 0, 0, 0.5, s, 0, 0, 0.5);
+    }
+  }
+  const lineCount = pos.length / 3;
+
+  // Cada raio é um feixe de 3 linhas quase juntas, para ficar mais grosso e brilhante.
+  for (let i = 0; i < RAYS; i++) {
+    const d = randDir();
+    const s = R();
+    for (let j = 0; j < 3; j++) {
+      const e = norm(d.map((x) => x + (R() - 0.5) * 0.012));
+      pos.push(0, 0, 0, ...e);
+      seed.push(s, 0, 1, 0.75, s, 1, 1, 0.75);
+    }
+  }
+  const rayCount = pos.length / 3 - lineCount;
+
+  for (let i = 0; i < SPARKS; i++) {
+    const d = randDir();
+    const r = 0.88 + Math.pow(R(), 3) * 0.4;
+    pos.push(d[0] * r, d[1] * r, d[2] * r);
+    seed.push(R(), 0, 2, 0.45 + R() * 0.6);
+  }
+  return { pos: new Float32Array(pos), seed: new Float32Array(seed), lines: lineCount + rayCount, sparks: SPARKS };
+}
+
+// --- Matrizes 4x4 (ordem de coluna, como o WebGL espera) ---------------------
+const mul = (a, b) => {
+  const o = new Float32Array(16);
+  for (let c = 0; c < 4; c++)
+    for (let r = 0; r < 4; r++) {
+      let s = 0;
+      for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k];
+      o[c * 4 + r] = s;
+    }
+  return o;
+};
+const rotX = (a) => { const c = Math.cos(a), s = Math.sin(a); return new Float32Array([1, 0, 0, 0, 0, c, s, 0, 0, -s, c, 0, 0, 0, 0, 1]); };
+const rotY = (a) => { const c = Math.cos(a), s = Math.sin(a); return new Float32Array([c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1]); };
+const move = (x, y, z) => new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1]);
+function perspective(fovy, aspect, near, far) {
+  const f = 1 / Math.tan(fovy / 2), nf = 1 / (near - far);
+  return new Float32Array([f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) * nf, -1, 0, 0, 2 * far * near * nf, 0]);
+}
 
 export class JarvisOrb {
   constructor(canvas) {
     this.canvas = canvas;
-    const gl = (this.gl = canvas.getContext("webgl2", { antialias: false, alpha: false }));
-    if (!gl) throw new Error("WebGL2 indisponível neste navegador");
+    const gl = (this.gl = canvas.getContext("webgl2", { antialias: true, premultipliedAlpha: true }));
+    if (!gl) throw new Error("WebGL2 indisponível");
+    this.prog = this.program(VERT, FRAG);
+    this.coreProg = this.program(CORE_VERT, CORE_FRAG);
+    this.u = this.uniforms(this.prog, ["uMVP", "uTime", "uBreak", "uEnergy", "uLift", "uDpr"]);
+    this.uC = this.uniforms(this.coreProg, ["uCenter", "uRadius", "uPower", "uTime"]);
 
-    const prog = gl.createProgram();
-    for (const [type, src] of [[gl.VERTEX_SHADER, VERT], [gl.FRAGMENT_SHADER, FRAG]]) {
+    const geo = buildGeometry();
+    this.lines = geo.lines;
+    this.sparks = geo.sparks;
+    this.vao = gl.createVertexArray();
+    gl.bindVertexArray(this.vao);
+    this.attr("aPos", geo.pos, 3);
+    this.attr("aSeed", geo.seed, 4);
+    gl.bindVertexArray(null);
+    this.coreVao = gl.createVertexArray();
+
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE);
+    gl.clearColor(0, 0, 0, 0);
+
+    this.target = MODES.idle;
+    this.cur = { ...MODES.idle };
+    this.level = 0;
+    this.brk = 0;
+    this.pulse = 0;
+    this.lastLevel = 0;
+    this.spinY = 0;
+    this.spinX = 0;
+    this.mx = 0;
+    this.my = 0;
+    addEventListener("pointermove", (e) => {
+      this.mx = (e.clientX / innerWidth - 0.5) * 2;
+      this.my = (e.clientY / innerHeight - 0.5) * 2;
+    });
+    this.resize = this.resize.bind(this);
+    addEventListener("resize", this.resize);
+    this.resize();
+    this.t0 = this.prev = performance.now();
+    this.frame = this.frame.bind(this);
+    requestAnimationFrame(this.frame);
+  }
+
+  program(vs, fs) {
+    const gl = this.gl;
+    const sh = (type, src) => {
       const s = gl.createShader(type);
       gl.shaderSource(s, src);
       gl.compileShader(s);
       if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
-      gl.attachShader(prog, s);
-    }
-    gl.linkProgram(prog);
-    gl.useProgram(prog);
+      return s;
+    };
+    const p = gl.createProgram();
+    gl.attachShader(p, sh(gl.VERTEX_SHADER, vs));
+    gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    return p;
+  }
 
-    const buf = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-    const loc = gl.getAttribLocation(prog, "a");
+  uniforms(p, names) {
+    return Object.fromEntries(names.map((n) => [n, this.gl.getUniformLocation(p, n)]));
+  }
+
+  attr(name, data, size) {
+    const gl = this.gl;
+    const b = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, b);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(this.prog, name);
     gl.enableVertexAttribArray(loc);
-    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-
-    this.u = {};
-    for (const name of ["uRes", "uTime", "uLevel", "uFlow", "uEnergy", "uRing"]) {
-      this.u[name] = gl.getUniformLocation(prog, name);
-    }
-
-    this.target = MODES.sleep;
-    this.cur = { ...MODES.sleep };
-    this.level = 0;
-    this.rawLevel = 0;
-    this.flow = 0;
-    this.last = performance.now();
-
-    this.resize = this.resize.bind(this);
-    addEventListener("resize", this.resize);
-    this.resize();
-    requestAnimationFrame((t) => this.frame(t));
+    gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 0, 0);
   }
 
   resize() {
-    // Limita a resolução: o shader é por pixel; 1.25x já fica nítido.
-    const dpr = Math.min(devicePixelRatio || 1, 1.25);
-    this.canvas.width = Math.round(this.canvas.clientWidth * dpr);
-    this.canvas.height = Math.round(this.canvas.clientHeight * dpr);
+    this.dpr = Math.min(devicePixelRatio || 1, 1.5);
+    this.canvas.width = Math.round(innerWidth * this.dpr);
+    this.canvas.height = Math.round(innerHeight * this.dpr);
     this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
   }
 
-  setMode(mode) {
-    this.target = MODES[mode] || MODES.idle;
+  setMode(m) {
+    this.mode = m;
+    this.target = MODES[m] || MODES.idle;
   }
 
-  setLevel(level) {
-    this.rawLevel = level;
+  setLevel(v) {
+    this.level = v;
   }
 
   frame(now) {
-    const dt = Math.min(0.05, (now - this.last) / 1000);
-    this.last = now;
-    const k = 1 - Math.exp(-dt * 3);
-    for (const key of ["energy", "speed", "ring"]) this.cur[key] = lerp(this.cur[key], this.target[key], k);
+    const { gl } = this;
+    const dt = Math.min(0.05, (now - this.prev) / 1000);
+    this.prev = now;
+    const t = (now - this.t0) / 1000;
+    const k = 1 - Math.exp(-dt * 4);
+    for (const key of Object.keys(this.cur)) this.cur[key] += (this.target[key] - this.cur[key]) * k;
 
-    // Sobe rápido e desce devagar, como um VU.
-    const target = Math.min(1, this.rawLevel);
-    this.level = lerp(this.level, target, 1 - Math.exp(-dt * (target > this.level ? 18 : 6)));
-    this.flow += dt * (this.cur.speed + this.level * 1.5);
+    // A voz estufa a esfera rápido e ela volta devagar; picos dão um tranco extra.
+    const lvl = this.mode === "speaking" || this.mode === "listening" ? this.level : 0;
+    const want = this.cur.brk + lvl * (this.mode === "speaking" ? 1.0 : 0.3);
+    this.brk += (want - this.brk) * (want > this.brk ? 1 - Math.exp(-dt * 16) : 1 - Math.exp(-dt * 3));
+    if (lvl - this.lastLevel > 0.2) this.pulse = 1;
+    this.lastLevel = lvl;
+    this.pulse *= Math.exp(-dt * 4);
+    this.spinY += dt * this.cur.speed * 0.5;
+    this.spinX += dt * this.cur.speed * 0.23;
 
-    const gl = this.gl, u = this.u;
-    gl.uniform2f(u.uRes, this.canvas.width, this.canvas.height);
-    gl.uniform1f(u.uTime, now / 1000);
-    gl.uniform1f(u.uLevel, this.level);
-    gl.uniform1f(u.uFlow, this.flow);
-    gl.uniform1f(u.uEnergy, this.cur.energy);
-    gl.uniform1f(u.uRing, this.cur.ring);
+    const w = this.canvas.width, h = this.canvas.height, aspect = w / h;
+    const dist = 4.4;
+    // Em tela em pé, abre o campo de visão para a esfera caber na largura.
+    const fovy = aspect >= 1 ? 0.8 : 2 * Math.atan(Math.tan(0.4) / aspect);
+    const proj = perspective(fovy, aspect, 0.1, 20);
+    const lift = 0.07;
+    const view = mul(move(0, 0, -dist), mul(rotX(this.spinX + this.my * 0.25), rotY(this.spinY + this.mx * 0.35)));
+    const b = this.brk + this.pulse * 0.25;
+
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    gl.useProgram(this.coreProg);
+    gl.bindVertexArray(this.coreVao);
+    const pxPerUnit = h / 2 / (Math.tan(fovy / 2) * dist);
+    gl.uniform2f(this.uC.uCenter, w / 2, h / 2 + lift * (h / 2));
+    gl.uniform1f(this.uC.uRadius, pxPerUnit);
+    gl.uniform1f(this.uC.uPower, this.cur.core * (0.85 + lvl * 0.7 + this.pulse * 0.35));
+    gl.uniform1f(this.uC.uTime, t);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-    requestAnimationFrame((t) => this.frame(t));
+
+    gl.useProgram(this.prog);
+    gl.bindVertexArray(this.vao);
+    gl.uniformMatrix4fv(this.u.uMVP, false, mul(proj, view));
+    gl.uniform1f(this.u.uTime, t);
+    gl.uniform1f(this.u.uBreak, b);
+    gl.uniform1f(this.u.uEnergy, this.cur.energy);
+    gl.uniform1f(this.u.uLift, lift);
+    gl.uniform1f(this.u.uDpr, this.dpr);
+    gl.drawArrays(gl.LINES, 0, this.lines);
+    gl.drawArrays(gl.POINTS, this.lines, this.sparks);
+    gl.bindVertexArray(null);
+    requestAnimationFrame(this.frame);
   }
 }

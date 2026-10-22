@@ -7,8 +7,18 @@
 import { MsEdgeTTS, OUTPUT_FORMAT } from "msedge-tts";
 
 const ELEVEN_KEY = process.env.ELEVENLABS_API_KEY || "";
-// "Adam" — voz masculina padrão da ElevenLabs. Troque por outra no .env.
-const ELEVEN_VOICE = process.env.ELEVENLABS_VOICE_ID || "pNInz6obpgDQGcFmaJgB";
+// Vozes prontas da ElevenLabs no estilo do Jarvis. Escolha pelo nome com JARVIS_VOZ no .env,
+// ou cole o ID de qualquer voz da biblioteca em ELEVENLABS_VOICE_ID.
+export const VOZES = {
+  daniel: "onwK4e9ZLuTAKqWW03F9", // britânico, sério e elegante (padrão)
+  george: "JBFqnCBsd6RMkjVDRZzb", // britânico, mais caloroso
+  brian: "nPczCjzI2devNBz1zQrb", // americano, grave
+  alice: "Xb7hH8MSUJpSbSDYk0k2", // britânica, firme (feminina)
+  lily: "pFZP5JQG7iQjIQuC4Bku", // britânica, suave (feminina)
+};
+const VOZ = (process.env.JARVIS_VOZ || "daniel").toLowerCase();
+const ELEVEN_VOICE = process.env.ELEVENLABS_VOICE_ID || VOZES[VOZ] || VOZES.daniel;
+const ELEVEN_NAME = process.env.ELEVENLABS_VOICE_ID ? "ElevenLabs" : `ElevenLabs - ${VOZES[VOZ] ? VOZ : "daniel"}`;
 // Flash: o modelo mais rápido (resposta em menos de meio segundo) e que gasta metade dos créditos.
 const ELEVEN_MODEL = process.env.ELEVENLABS_MODEL || "eleven_flash_v2_5";
 // Outras boas em pt-BR: pt-BR-FranciscaNeural, pt-BR-ThalitaMultilingualNeural.
@@ -16,7 +26,7 @@ const ELEVEN_MODEL = process.env.ELEVENLABS_MODEL || "eleven_flash_v2_5";
 const EDGE_VOICE = process.env.JARVIS_VOICE || "pt-BR-AntonioNeural";
 const EDGE_ON = EDGE_VOICE !== "navegador";
 
-export const VOICE_LABEL = [ELEVEN_KEY && "ElevenLabs", EDGE_ON && `Microsoft ${EDGE_VOICE}`, "voz do navegador"]
+export const VOICE_LABEL = [ELEVEN_KEY && ELEVEN_NAME, EDGE_ON && `Microsoft ${EDGE_VOICE}`, "voz do navegador"]
   .filter(Boolean)
   .join(" → ");
 export const SERVER_VOICE = Boolean(ELEVEN_KEY) || EDGE_ON;
@@ -34,7 +44,7 @@ async function elevenLabs(text) {
       text,
       model_id: ELEVEN_MODEL,
       language_code: "pt",
-      voice_settings: { stability: 0.5, similarity_boost: 0.8 },
+      voice_settings: { stability: 0.6, similarity_boost: 0.8, speed: 1.05 },
     }),
     signal: AbortSignal.timeout(8_000),
   });
@@ -83,7 +93,7 @@ export async function synthesize(text) {
   const errors = [];
   if (ELEVEN_KEY && !isDown("eleven")) {
     try {
-      return { audio: await elevenLabs(text), voice: "ElevenLabs" };
+      return { audio: await elevenLabs(text), voice: ELEVEN_NAME };
     } catch (err) {
       errors.push(err.message);
     }

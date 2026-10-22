@@ -1,0 +1,15 @@
+# Rotina do Jarvis: o que ele faz sozinho quando abre junto com o computador.
+# Uma ação por linha. Linhas que começam com # são ignoradas (tire o # para ligar).
+#
+#   fechar <programa>   fecha um programa (discord, spotify, steam, whatsapp, telegram...)
+#   abrir <programa>    abre um programa (whatsapp, telegram, spotify, discord...)
+#   abrir <site>        abre um site (youtube.com, google.com...)
+#
+# Este arquivo é só o modelo. O Jarvis cria uma cópia chamada rotina.txt na primeira vez;
+# edite a rotina.txt (no Bloco de Notas mesmo). Ela não é apagada quando você atualiza o Jarvis.
+
+fechar discord
+# abrir google.com
+# abrir youtube.com
+# abrir whatsapp
+# abrir telegram

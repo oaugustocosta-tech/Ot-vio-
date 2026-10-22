@@ -17,31 +17,25 @@
 
     <header class="hud">
       <div class="brand">J.A.R.V.I.S.</div>
-      <div class="status"><i id="statusDot"></i><span id="statusText">dormindo</span></div>
+      <div class="status"><i id="statusDot"></i><span id="statusText">offline</span></div>
     </header>
 
-    <button id="logToggle" class="ghost" title="Histórico">Histórico</button>
-    <aside id="log" class="log hidden"></aside>
+    <button id="chatToggle" class="ghost" aria-pressed="false" title="Mostrar a conversa escrita">Chat</button>
+    <aside class="chatbox" aria-label="Conversa escrita">
+      <div id="log" class="log"></div>
+      <form id="composer" class="composer">
+        <input id="text" autocomplete="off" placeholder="Digite para o Jarvis…" />
+        <button type="submit" class="send">Enviar</button>
+      </form>
+    </aside>
 
-    <section class="subtitle" id="subtitle" aria-live="polite"></section>
-
-    <form id="composer" class="composer">
-      <button type="button" id="mic" class="mic" title="Falar">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2Z"/></svg>
-      </button>
-      <input id="text" autocomplete="off" placeholder="Fale ou digite para o Jarvis…" />
-      <label class="toggle" title="Depois que ele responder, volta a ouvir sozinho">
-        <input type="checkbox" id="handsFree" checked />
-        <span>Mãos livres</span>
-      </label>
-      <button type="submit" class="send">Enviar</button>
-    </form>
+    <div id="toast" class="toast" role="status"></div>
 
     <div id="boot" class="boot">
       <div class="boot-inner">
         <div class="boot-title">J.A.R.V.I.S.</div>
         <button id="wake">Despertar</button>
-        <small>Use o Microsoft Edge ou o Chrome para conversar por voz.</small>
+        <small>Depois, é só dizer "Jarvis" para chamar. Clicar no reator também chama.</small>
       </div>
     </div>
 

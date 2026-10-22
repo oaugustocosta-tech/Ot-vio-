@@ -2,7 +2,7 @@
 // Cada ferramenta tem uma descrição (o que a IA lê para decidir quando usar) e uma função `run`.
 // Nada aqui roda comando livre: só ações fixas desta lista. Para adicionar um programa,
 // inclua uma linha em PROGRAMAS.
-import { spawn } from "node:child_process";
+import { spawn, execFile } from "node:child_process";
 
 const WINDOWS = process.platform === "win32";
 
@@ -18,12 +18,35 @@ export const PROGRAMAS = {
   edge: { exe: "msedge" },
   spotify: { uri: "spotify:" },
   whatsapp: { uri: "whatsapp:" },
+  telegram: { uri: "tg:" },
+  discord: { uri: "discord:" },
+  steam: { uri: "steam:" },
   word: { exe: "winword" },
   excel: { exe: "excel" },
   "gerenciador de tarefas": { exe: "taskmgr" },
   paint: { exe: "mspaint" },
   câmera: { uri: "microsoft.windows.camera:" },
 };
+
+// nome falado -> processos que "fechar" encerra. O Edge fica de fora de propósito: a janela
+// do Jarvis roda nele.
+export const FECHAVEIS = {
+  discord: ["Discord.exe"],
+  spotify: ["Spotify.exe"],
+  steam: ["steam.exe"],
+  whatsapp: ["WhatsApp.exe", "WhatsApp.Root.exe"],
+  telegram: ["Telegram.exe"],
+  chrome: ["chrome.exe"],
+  word: ["WINWORD.EXE"],
+  excel: ["EXCEL.EXE"],
+  "bloco de notas": ["notepad.exe"],
+  calculadora: ["CalculatorApp.exe"],
+  paint: ["mspaint.exe"],
+  "epic games": ["EpicGamesLauncher.exe"],
+};
+
+// Mostra ou esconde a janela do Jarvis (o título dela é "JARVIS").
+const JANELA = { mostrar: 9, esconder: 6 }; // SW_RESTORE, SW_MINIMIZE
 
 // Teclas virtuais de mídia do Windows.
 const TECLAS = {
@@ -42,6 +65,13 @@ function run(cmd, args) {
     child.unref();
     // explorer.exe e cmd costumam sair com código != 0 mesmo quando funcionam; basta ter iniciado.
     setTimeout(resolve, 150);
+  });
+}
+
+// Roda e espera terminar; devolve o código de saída.
+function runWait(cmd, args) {
+  return new Promise((resolve) => {
+    execFile(cmd, args, { windowsHide: true, timeout: 10_000 }, (err) => resolve(err ? (err.code ?? 1) : 0));
   });
 }
 
@@ -107,6 +137,45 @@ export const TOOLS = [
       if (prog.uri) await run("explorer.exe", [prog.uri]);
       else await run("cmd.exe", ["/c", "start", prog.exe]);
       return `Abrindo ${nome}.`;
+    },
+  },
+  {
+    name: "fechar_programa",
+    description: `Fecha um programa que está aberto no computador. Programas que posso fechar: ${Object.keys(FECHAVEIS).join(", ")}.`,
+    parameters: {
+      type: "object",
+      properties: { nome: { type: "string", enum: Object.keys(FECHAVEIS) } },
+      required: ["nome"],
+    },
+    async run({ nome }) {
+      onlyWindows();
+      const exes = FECHAVEIS[String(nome || "").toLowerCase()];
+      if (!exes) throw new Error(`Não sei fechar "${nome}".`);
+      const code = await runWait("taskkill.exe", ["/F", "/T", ...exes.flatMap((e) => ["/IM", e])]);
+      return code === 0 ? `${nome} fechado.` : `${nome} não estava aberto.`;
+    },
+  },
+  {
+    name: "janela_jarvis",
+    description: "Mostra (traz para a frente) ou esconde (minimiza) a janela do próprio Jarvis. Escondido, ele continua ouvindo e respondendo.",
+    parameters: {
+      type: "object",
+      properties: { acao: { type: "string", enum: Object.keys(JANELA) } },
+      required: ["acao"],
+    },
+    async run({ acao }) {
+      onlyWindows();
+      const n = JANELA[acao];
+      if (!n) throw new Error(`Ação desconhecida: ${acao}`);
+      const script = [
+        `Add-Type -Name W -Namespace J -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr h, int n); [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);'`,
+        `Get-Process msedge -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -like 'JARVIS*' } | ForEach-Object {`,
+        `  [J.W]::ShowWindowAsync($_.MainWindowHandle, ${n}) | Out-Null`,
+        n === 9 ? `  [J.W]::SetForegroundWindow($_.MainWindowHandle) | Out-Null` : "",
+        `}`,
+      ].join("\n");
+      await runWait("powershell.exe", ["-NoProfile", "-WindowStyle", "Hidden", "-Command", script]);
+      return acao === "mostrar" ? "Janela à vista." : "Janela minimizada; continuo ouvindo.";
     },
   },
   {

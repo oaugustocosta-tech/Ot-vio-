@@ -2,8 +2,9 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { chat, describeError, BRAIN, BRAIN_LABEL, NAME } from "./brain.js";
+import { chat, describeError, BRAIN_LABEL, BRAIN_SHORT, NAME } from "./brain.js";
 import { synthesize, SERVER_VOICE, VOICE_LABEL } from "./speech.js";
+import { rodarRotina } from "./rotina.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
@@ -116,9 +117,14 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.method === "POST" && req.url === "/api/chat") return await handleChat(req, res);
     if (req.method === "POST" && req.url === "/api/tts") return await handleTts(req, res);
+    if (req.method === "POST" && req.url === "/api/rotina") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ passos: rodarRotina() }));
+      return;
+    }
     if (req.method === "GET" && req.url === "/api/config") {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ neuralVoice: SERVER_VOICE, brain: { claude: "Claude", groq: "Groq", gemini: "Gemini", none: "nenhum" }[BRAIN], name: NAME }));
+      res.end(JSON.stringify({ neuralVoice: SERVER_VOICE, brain: BRAIN_SHORT, name: NAME }));
       return;
     }
     if (req.method === "GET") return serveStatic(req, res);
