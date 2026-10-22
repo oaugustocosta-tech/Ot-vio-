@@ -25,12 +25,16 @@ Pronto. Ao ligar o PC, ele abre e diz "Bom dia, Otávio". Se o navegador ainda s
 
 | Chave no `.env` | Resultado |
 |---|---|
-| `GEMINI_API_KEY` | **Grátis.** Gemini do Google, com limite de uso por dia. |
+| `GEMINI_API_KEY` | **Grátis.** Gemini do Google, com limite de uso por dia. Se um modelo estiver sobrecarregado, ele troca sozinho por outro. |
 | `ANTHROPIC_API_KEY` | Pago por uso. Claude, mais inteligente. Se estiver preenchida, ela é usada no lugar do Gemini. |
 
 ## A voz
 
-Sem nada extra, ele usa a voz do navegador. No **Microsoft Edge** as vozes "Natural" (como a Antonio) já soam bem realistas e são grátis. Para uma voz ainda mais natural, coloque uma `ELEVENLABS_API_KEY` no `.env` (a ElevenLabs tem plano grátis com limite).
+Por padrão, o Ultron fala com as vozes neurais da Microsoft (as mesmas do "Ler em voz alta" do Edge), que são grátis e soam humanas. Para trocar de voz, coloque `ULTRON_VOICE` no `.env` (por exemplo `pt-BR-FranciscaNeural`). Esse serviço não é oficial: se ele cair, o Ultron usa a voz do navegador até voltar. Para uma voz ainda mais realista, coloque uma `ELEVENLABS_API_KEY` (a ElevenLabs tem plano grátis com limite).
+
+## Microfone
+
+Qualquer microfone funciona: o do headset, o de uma webcam, ou o embutido de um notebook. Com **Mãos livres** ligado você não precisa clicar em nada. Ele escuta, responde e volta a escutar. Sem fone, ele para de ouvir enquanto fala, para não escutar a própria voz.
 
 ## Para quem programa
 
@@ -43,9 +47,10 @@ npm start                 # http://localhost:3000
 ```
 server.js         servidor HTTP: serve o app, faz streaming das respostas e da voz neural
 brain.js          cérebro (Claude ou Gemini), personalidade e o laço de ferramentas
+speech.js         voz gerada no servidor (Microsoft neural grátis ou ElevenLabs)
 tools.js          ações no computador; para incluir um programa, edite PROGRAMAS
 public/orb.js     orbe animada (WebGL puro, sem dependências)
-public/voice.js   voz (navegador ou ElevenLabs) e nível de áudio para a orbe
+public/voice.js   toca a voz (do servidor ou do navegador) e mede o volume para a orbe
 public/app.js     conversa: microfone, streaming, legendas, estados, início automático
 Ultron.vbs        abre o servidor escondido e a janela do Ultron no Edge (Windows)
 windows/          instalador para Windows

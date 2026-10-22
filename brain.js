@@ -6,11 +6,15 @@ import { TOOLS, runTool } from "./tools.js";
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
 const GEMINI_KEY = process.env.GEMINI_API_KEY || "";
 const CLAUDE_MODEL = process.env.ULTRON_MODEL || "claude-opus-5-5";
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
+// Modelos do Gemini, do mais rápido para o mais capaz. Se um estiver sobrecarregado (erro 503)
+// ou fora do ar, o próximo é usado na hora.
+const GEMINI_MODELS = process.env.GEMINI_MODEL
+  ? [process.env.GEMINI_MODEL]
+  : ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-2.5-flash"];
 const MAX_STEPS = 6; // limite de rodadas de ferramenta por pergunta
 
 export const BRAIN = ANTHROPIC_KEY ? "claude" : GEMINI_KEY ? "gemini" : "none";
-export const BRAIN_LABEL = { claude: `Claude (${CLAUDE_MODEL})`, gemini: `Gemini (${GEMINI_MODEL}, plano grátis)`, none: "nenhum" }[BRAIN];
+export const BRAIN_LABEL = { claude: `Claude (${CLAUDE_MODEL})`, gemini: `Gemini (${GEMINI_MODELS[0]}, plano grátis)`, none: "nenhum" }[BRAIN];
 
 export const NAME = process.env.ULTRON_USER || "Otávio";
 
@@ -129,23 +133,70 @@ async function* readSse(body) {
   }
 }
 
+// Pensar antes de responder deixa o Gemini lento demais para conversa falada: pede o mínimo.
+// Os modelos 2.5 e 3 usam campos diferentes; se um modelo recusar, vai sem a configuração.
+function thinkingConfig(model) {
+  if (noThinkingConfig.has(model)) return undefined;
+  return /2\.5/.test(model) ? { thinkingBudget: 0 } : { thinkingLevel: "minimal" };
+}
+const noThinkingConfig = new Set();
+let geminiPreferred = 0; // índice do último modelo que respondeu bem
+
+const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function geminiPost(model, body, signal) {
+  return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-goog-api-key": GEMINI_KEY },
+    body: JSON.stringify(body),
+    signal,
+  });
+}
+
+// Faz a chamada tentando os modelos em ordem. `only` fixa um modelo (rodadas de ferramenta
+// precisam continuar no mesmo modelo, por causa das assinaturas de pensamento).
+async function geminiFetch(payload, signal, only) {
+  const order = only ? [only] : [...GEMINI_MODELS.slice(geminiPreferred), ...GEMINI_MODELS.slice(0, geminiPreferred)];
+  let lastStatus = 0;
+  let lastBody = "";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    for (const model of order) {
+      const thinking = thinkingConfig(model);
+      const body = thinking ? { ...payload, generationConfig: { thinkingConfig: thinking } } : payload;
+      let res = await geminiPost(model, body, signal);
+      if (res.status === 400 && thinking) {
+        const text = await res.text();
+        if (!/think/i.test(text)) throw new BrainError(describeGeminiError(400, text));
+        noThinkingConfig.add(model);
+        res = await geminiPost(model, payload, signal);
+      }
+      if (res.ok) {
+        if (!only) geminiPreferred = GEMINI_MODELS.indexOf(model);
+        return { res, model };
+      }
+      lastStatus = res.status;
+      lastBody = await res.text();
+      if (!RETRYABLE.has(res.status) && res.status !== 404) throw new BrainError(describeGeminiError(res.status, lastBody));
+      console.warn(`  Gemini ${model}: ${res.status}, tentando outro…`);
+    }
+    await sleep(800);
+  }
+  throw new BrainError(describeGeminiError(lastStatus, lastBody));
+}
+
 async function chatGemini(history, send, signal) {
   const contents = withClock(history).map((m) => ({
     role: m.role === "assistant" ? "model" : "user",
     parts: [{ text: m.content }],
   }));
+  let model = null;
   for (let step = 0; step < MAX_STEPS; step++) {
     if (step > 0) send("text", " ");
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": GEMINI_KEY },
-        body: JSON.stringify({ systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] }, contents, tools: GEMINI_TOOLS }),
-        signal,
-      },
-    );
-    if (!res.ok) throw new BrainError(describeGeminiError(res.status, await res.text()));
+    const payload = { systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] }, contents, tools: GEMINI_TOOLS };
+    const got = await geminiFetch(payload, signal, model);
+    const res = got.res;
+    model = got.model;
 
     // Guarda as partes exatamente como vieram: o Gemini exige receber de volta as
     // "assinaturas de pensamento" que acompanham as chamadas de ferramenta.
@@ -182,6 +233,7 @@ function describeGeminiError(status, body) {
     msg = JSON.parse(body).error?.message || body;
   } catch {}
   if (status === 429) return "Acabou o limite grátis do Gemini por agora. Espere um minuto (ou até amanhã, se for o limite do dia).";
+  if (status >= 500) return "Os servidores do Gemini estão sobrecarregados agora. Tente de novo em alguns segundos.";
   if (/API key/i.test(msg)) return "Chave do Gemini inválida. Confira GEMINI_API_KEY no arquivo .env.";
   return `Erro do Gemini (${status}): ${String(msg).slice(0, 200)}`;
 }
