@@ -37,24 +37,52 @@ const isDown = (k) => Date.now() < downUntil[k];
 const markDown = (k, ms) => (downUntil[k] = Date.now() + ms);
 
 async function elevenLabs(text) {
-  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE}?output_format=mp3_44100_64`, {
-    method: "POST",
-    headers: { "xi-api-key": ELEVEN_KEY, "Content-Type": "application/json", Accept: "audio/mpeg" },
-    body: JSON.stringify({
-      text,
-      model_id: ELEVEN_MODEL,
-      language_code: "pt",
-      voice_settings: { stability: 0.6, similarity_boost: 0.8, speed: 1.05 },
-    }),
-    signal: AbortSignal.timeout(8_000),
-  });
+  let res;
+  try {
+    res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE}?output_format=mp3_44100_64`, {
+      method: "POST",
+      headers: { "xi-api-key": ELEVEN_KEY, "Content-Type": "application/json", Accept: "audio/mpeg" },
+      body: JSON.stringify({
+        text,
+        model_id: ELEVEN_MODEL,
+        language_code: "pt",
+        voice_settings: { stability: 0.6, similarity_boost: 0.8, speed: 1.05 },
+      }),
+      signal: AbortSignal.timeout(8_000),
+    });
+  } catch (err) {
+    console.error(`  ElevenLabs: ${err.message}`);
+    markDown("eleven", 60_000);
+    throw new Error("Não consegui falar com a ElevenLabs (internet lenta ou fora do ar).");
+  }
   if (!res.ok) {
     const body = await res.text();
+    console.error(`  ElevenLabs ${res.status}: ${body.slice(0, 300)}`);
     // Sem créditos ou chave inválida: não adianta tentar de novo tão cedo.
     markDown("eleven", res.status === 401 || res.status === 402 || /quota/i.test(body) ? 30 * 60_000 : 60_000);
-    throw new Error(`ElevenLabs ${res.status}: ${body.slice(0, 200)}`);
+    throw new Error(explainEleven(res.status, body));
   }
   return Buffer.from(await res.arrayBuffer());
+}
+
+// Motivo da falha em português, para aparecer na tela do Jarvis.
+function explainEleven(status, body) {
+  let code = "";
+  try {
+    code = JSON.parse(body)?.detail?.status || "";
+  } catch {}
+  const msgs = {
+    missing_permissions: "A chave da ElevenLabs está sem permissão de Text to Speech. No site da ElevenLabs, em API Keys, edite a chave e libere Text to Speech.",
+    invalid_api_key: "A chave da ElevenLabs é inválida. Rode o instalar.bat e cole a chave de novo.",
+    quota_exceeded: "Os créditos grátis da ElevenLabs deste mês acabaram.",
+    detected_unusual_activity: "A ElevenLabs bloqueou o plano grátis desta conta por atividade incomum (VPN, por exemplo).",
+    voice_not_found: "A voz escolhida não existe na sua conta da ElevenLabs.",
+    paid_plan_required: "Essa voz exige plano pago na ElevenLabs.",
+  };
+  if (msgs[code]) return msgs[code];
+  if (status === 401) return "A ElevenLabs recusou a chave (erro 401). Confira se ela está certa e com permissão de Text to Speech.";
+  if (status === 402) return "A ElevenLabs pediu plano pago para essa voz.";
+  return `A ElevenLabs respondeu com erro ${status}${code ? ` (${code})` : ""}.`;
 }
 
 let edge = null; // conexão reaproveitada entre frases
@@ -84,7 +112,8 @@ async function edgeTts(text) {
     } catch {}
     edge = null;
     markDown("edge", 2 * 60_000);
-    throw new Error(`Microsoft: ${err.message}`);
+    console.error(`  Microsoft: ${err.message}`);
+    throw new Error("A voz grátis da Microsoft também não respondeu.");
   }
 }
 
@@ -105,5 +134,5 @@ export async function synthesize(text) {
       errors.push(err.message);
     }
   }
-  throw new Error(errors.join(" | ") || "vozes do servidor em pausa depois de falhar");
+  throw new Error(errors.join(" ") || "As vozes do servidor estão em pausa depois de falhar; tento de novo em alguns minutos.");
 }

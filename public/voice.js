@@ -4,8 +4,14 @@
 // - Sem chave: voz do navegador. No Microsoft Edge as vozes "Natural" (Antonio, Francisca...)
 //   são neurais e gratuitas; é a melhor opção sem pagar nada.
 
-// Ordem de preferência das vozes do navegador.
-const PREFERRED = [/antonio.*natural/i, /natural/i, /google.*portugu[eê]s.*brasil/i, /daniel|ricardo|felipe/i];
+// Ordem de preferência das vozes do navegador: masculinas primeiro, combinando com o Jarvis.
+const PREFERRED = [
+  /antonio.*natural/i,
+  /(donato|fabio|humberto|julio|nicolau|valerio).*natural/i,
+  /daniel|ricardo|felipe|antonio/i,
+  /natural/i,
+  /google.*portugu[eê]s.*brasil/i,
+];
 
 export class JarvisVoice {
   constructor() {
@@ -15,6 +21,7 @@ export class JarvisVoice {
     this.simLevel = 0;
     this.onSpeakingChange = () => {};
     this.onVoiceChange = () => {};
+    this.onVoiceError = () => {};
     this.serverDownUntil = 0;
     this.generation = 0;
   }
@@ -102,7 +109,11 @@ export class JarvisVoice {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      if (!r.ok) {
+        const why = (await r.json().catch(() => ({}))).error;
+        if (why) this.onVoiceError(why);
+        throw new Error(`HTTP ${r.status}`);
+      }
       this.setVoiceName(r.headers.get("X-Jarvis-Voice") || "servidor");
       return await this.ctx.decodeAudioData(await r.arrayBuffer());
     } catch {

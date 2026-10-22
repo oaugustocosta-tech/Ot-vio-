@@ -13,6 +13,7 @@ let speaking = false;
 let hearing = false; // ele está falando agora
 let active = false; // em conversa: ouve sem precisar dizer "Jarvis"
 let sleepAfter = false; // despedida: volta a esperar o "Jarvis" depois de responder
+let off = false; // desativado: só volta com "ativar Jarvis"
 let controller = null;
 
 // Quanto tempo ele continua ouvindo sem precisar do "Jarvis" depois de responder.
@@ -21,7 +22,12 @@ const ACTIVE_MS = 20_000;
 // "Jarvis" do jeito que o reconhecimento de voz costuma escrever.
 const WAKE = /\bd?j[aáe]r[vb][iíae]?[sz]?\b/gi;
 const FILLER = /^(ativar|ativa|acordar|acorda|olá|ola|oi|ei|hey|ok|fala|e aí|e ai)(?=[\s,.!?]|$)/i;
-const FAREWELL = /\b(pode (descansar|dormir|parar|ir)|desativ\w*|dispensado|tchau|at[eé] (mais|logo)|s[oó] isso|obrigad[oa],? jarvis)\b/i;
+const FAREWELL = /\b(pode (descansar|dormir|parar|ir)|dispensado|tchau|at[eé] (mais|logo)|s[oó] isso|obrigad[oa]|valeu)\b/i;
+// Comandos de controle do próprio Jarvis, tratados aqui mesmo (sem passar pelo cérebro).
+// Valem só quando a frase é basicamente o comando, para "desliga o LED" não desligar o Jarvis.
+const OFF_CMD = /^(pode )?(se )?(desativ\w*( (o )?(jarvis|microfone|escuta))?|modo (silencioso|soneca|off)|para de (me )?(ouvir|escutar)|n[aã]o me (ouve|ou[cç]a|escuta)|fica (quieto|em sil[eê]ncio))$/i;
+const SHUTDOWN_CMD = /^(pode )?(se )?(deslig\w*|fech\w*|encerr\w*)( (o )?(jarvis|sistema))?$/i;
+const WAKE_UP = /\b(ativ\w*|acord\w*|volt\w*|liga\w*)\b/i;
 
 const hasWake = (text) => text.search(WAKE) >= 0;
 
@@ -34,13 +40,13 @@ function stripWake(text) {
 }
 
 // --- Estado visual -----------------------------------------------------------
-const LABELS = { sleep: 'diga "Jarvis"', listening: "ouvindo", thinking: "pensando", speaking: "falando" };
+const LABELS = { off: "desativado", sleep: 'diga "Jarvis"', listening: "ouvindo", thinking: "pensando", speaking: "falando" };
 
 function setState() {
-  const state = speaking ? "speaking" : busy ? "thinking" : active || hearing ? "listening" : "sleep";
+  const state = speaking ? "speaking" : busy ? "thinking" : active || hearing ? "listening" : off ? "off" : "sleep";
   $("statusText").textContent = LABELS[state];
   const st = $("statusText").parentElement;
-  st.classList.toggle("on", state !== "sleep");
+  st.classList.toggle("on", state !== "sleep" && state !== "off");
   st.classList.toggle("pulse", state === "thinking" || state === "speaking");
   orb.setMode(state);
 }
@@ -75,11 +81,11 @@ function logLine(role, text) {
 
 // Aviso curto no rodapé (o texto da conversa só aparece no chat).
 let toastTimer = null;
-function notice(text) {
+function notice(text, ms = 7000) {
   $("toast").textContent = text;
   $("toast").classList.add("show");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => $("toast").classList.remove("show"), 7000);
+  toastTimer = setTimeout(() => $("toast").classList.remove("show"), ms);
 }
 
 // Bipes de ativar e desativar, para saber que ele ouviu sem olhar a tela.
@@ -291,7 +297,7 @@ function onResult(e) {
   }
   const heard = `${finalText} ${interim}`.trim();
   // Resposta imediata ao ouvir "Jarvis", antes mesmo de ele terminar a frase.
-  if (!hearing && heard && (active || hasWake(heard))) {
+  if (!off && !hearing && heard && (active || hasWake(heard))) {
     hearing = true;
     if (!active) chime(true);
     setState();
@@ -301,22 +307,68 @@ function onResult(e) {
   handleUtterance(finalText.trim());
 }
 
+const isFarewellOnly = (t) =>
+  FAREWELL.test(t) &&
+  !t
+    .replace(new RegExp(FAREWELL.source, "gi"), " ")
+    .replace(/\b(senhor|jarvis|muito|por (hoje|enquanto|agora)|e|a[ií])\b|[,.!?]/gi, " ")
+    .trim();
+
+// Fala curta do próprio Jarvis, sem passar pelo cérebro.
+function sayLocal(text) {
+  logLine("assistant", text);
+  history.push({ role: "assistant", content: text });
+  voice.say(text);
+}
+
+function turnOff() {
+  off = true;
+  sleepAfter = false;
+  goSleep();
+  sayLocal('Certo, senhor. Fico desativado até o senhor dizer "ativar Jarvis".');
+}
+
+function turnOn() {
+  off = false;
+  activate(true);
+  sayLocal("De volta, senhor. Em que posso ajudar?");
+}
+
+function shutdown() {
+  off = true;
+  goSleep();
+  sayLocal("Desligando. Até logo, senhor.");
+  // Espera a despedida terminar e pede ao servidor para fechar tudo.
+  const bye = () => fetch("/api/desligar", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => {});
+  setTimeout(bye, 3500);
+}
+
 function handleUtterance(text) {
-  if (!active) {
-    if (!hasWake(text)) {
-      setState();
-      return; // conversa no ambiente, TV, música: ignora
-    }
-    const cmd = stripWake(text);
-    activate(false); // o bipe já tocou quando ele ouviu o nome
-    if (cmd) {
-      if (FAREWELL.test(text)) sleepAfter = true;
-      ask(cmd);
-    }
+  if (off) {
+    // Desativado: só "ativar Jarvis" (ou "Jarvis, acorda", "Jarvis, volta") traz de volta.
+    if (hasWake(text) && WAKE_UP.test(text)) turnOn();
     return;
   }
+  if (!active && !hasWake(text)) {
+    setState();
+    return; // conversa no ambiente, TV, música: ignora
+  }
+  const cmd = stripWake(text);
+  // "desliga o Jarvis" vira "desliga o" depois de tirar o nome.
+  const bare = cmd.replace(/[.!?]+$/, "").replace(/\s+(o|a)$/i, "");
+  if (bare && SHUTDOWN_CMD.test(bare)) return shutdown();
+  if (bare && OFF_CMD.test(bare)) return turnOff();
+  // Só despedida ("obrigado", "pode descansar"): responde na hora e volta a esperar o nome.
+  if (isFarewellOnly(cmd || text)) {
+    active = true; // para o bipe de descida tocar
+    goSleep();
+    sayLocal("Às ordens, senhor.");
+    return;
+  }
+  activate(false); // o bipe já tocou quando ele ouviu o nome
+  if (!cmd) return; // só chamou: espera o pedido
   if (FAREWELL.test(text)) sleepAfter = true;
-  ask(stripWake(text) || text);
+  ask(cmd);
 }
 
 voice.onSpeakingChange = (on) => {
@@ -334,7 +386,8 @@ $("scene").addEventListener("click", () => {
     voice.stop();
     return;
   }
-  if (active) goSleep();
+  if (off) turnOn();
+  else if (active) goSleep();
   else activate(true);
 });
 
@@ -379,6 +432,14 @@ function updateReadout() {
   }
 }
 voice.onVoiceChange = updateReadout;
+// Se a voz do servidor falhar, mostra o motivo uma vez (por exemplo, chave sem permissão).
+const voiceErrors = new Set();
+voice.onVoiceError = (why) => {
+  if (voiceErrors.has(why)) return;
+  voiceErrors.add(why);
+  notice(why, 15_000);
+  logLine("assistant", `[voz] ${why}`);
+};
 
 function greeting() {
   const h = new Date().getHours();
