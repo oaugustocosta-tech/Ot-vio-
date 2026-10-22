@@ -3,14 +3,12 @@
 // Conexão pelo jeito oficial (OAuth com PKCE): o usuário cria um app grátis no painel de
 // desenvolvedor do Spotify, cola o Client ID na tela Modos e clica em Conectar.
 import fs from "node:fs";
-import path from "node:path";
 import crypto from "node:crypto";
-import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { dado } from "./dados.js";
 import { normalize } from "./apps.js";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const ARQUIVO = path.join(here, "spotify.json");
+const ARQUIVO = dado("spotify.json");
 const PORT = Number(process.env.PORT) || 3000;
 // O Spotify só aceita endereço de retorno local com o IP 127.0.0.1 (não "localhost").
 export const REDIRECT = `http://127.0.0.1:${PORT}/spotify/callback`;

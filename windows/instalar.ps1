@@ -23,7 +23,7 @@ if ($versao -lt 22) {
 
 # Fecha um Jarvis que esteja rodando, para a versão nova assumir.
 Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
-  Where-Object { $_.CommandLine -match 'server\.js' -and $_.CommandLine -match 'env-file' } |
+  Where-Object { $_.CommandLine -match 'server\.js' -and $_.CommandLine -match 'env-file|--jarvis' } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
 # 2. Dependências
@@ -34,8 +34,42 @@ if ($LASTEXITCODE -ne 0) {
   Sair 1
 }
 
-# 3. Chaves
-$arquivoEnv = Join-Path $pasta ".env"
+# 3. Seus dados (chaves, modos, Spotify, rotina) ficam fora da pasta do programa, em
+# %APPDATA%\Jarvis, para as atualizações nunca apagarem nada.
+$dados = Join-Path $env:APPDATA "Jarvis"
+New-Item -ItemType Directory -Force -Path $dados | Out-Null
+$arquivosDados = @(".env", "modos.json", "spotify.json", "rotina.txt")
+# Procura cópias antigas do Jarvis (de ZIPs extraídos antes) e traz o que ainda não está salvo.
+$candidatas = @($pasta)
+foreach ($raiz in @(
+  (Join-Path $env:USERPROFILE "Downloads"),
+  [Environment]::GetFolderPath("Desktop"),
+  [Environment]::GetFolderPath("MyDocuments")
+)) {
+  if (Test-Path $raiz) {
+    $candidatas += Get-ChildItem $raiz -Recurse -Depth 3 -Filter "server.js" -File -ErrorAction SilentlyContinue |
+      Where-Object { Test-Path (Join-Path $_.DirectoryName "windows\abrir.ps1") } |
+      ForEach-Object { $_.DirectoryName }
+  }
+}
+$trouxe = @()
+foreach ($nome in $arquivosDados) {
+  $destino = Join-Path $dados $nome
+  if (Test-Path $destino) { continue }
+  $achado = $candidatas | ForEach-Object { Get-Item (Join-Path $_ $nome) -Force -ErrorAction SilentlyContinue } |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+  if ($achado) {
+    Copy-Item $achado.FullName $destino
+    $trouxe += "$nome (de $($achado.DirectoryName))"
+  }
+}
+if ($trouxe.Count) {
+  Write-Host "`nRecuperei das versões antigas:" -ForegroundColor Green
+  $trouxe | ForEach-Object { Write-Host "  $_" }
+}
+
+# 4. Chaves
+$arquivoEnv = Join-Path $dados ".env"
 $linhas = @()
 if (Test-Path $arquivoEnv) { $linhas = [IO.File]::ReadAllLines($arquivoEnv) }
 if (-not $linhas.Count) { $linhas = [IO.File]::ReadAllLines((Join-Path $pasta ".env.example")) }
@@ -97,7 +131,7 @@ if (TemChave "ELEVENLABS_API_KEY") {
   }
 }
 
-# 4. Atalhos (e remove os antigos, do tempo em que ele se chamava Ultron)
+# 5. Atalhos (e remove os antigos, do tempo em que ele se chamava Ultron)
 foreach ($antigo in @(
   (Join-Path ([Environment]::GetFolderPath("Desktop")) "Ultron.lnk"),
   (Join-Path ([Environment]::GetFolderPath("Startup")) "Ultron.lnk")
@@ -124,13 +158,14 @@ $resposta = Read-Host "`nQuer que o Jarvis abra sozinho toda vez que você ligar
 $inicio = Join-Path ([Environment]::GetFolderPath("Startup")) "Jarvis.lnk"
 if ($resposta -match '^[sS]') {
   Atalho $inicio "-Inicio"
-  Write-Host "Feito. Ele abre em tela cheia e roda a rotina (o arquivo rotina.txt nesta pasta)." -ForegroundColor Green
+  Write-Host "Feito. Ele abre em tela cheia e roda a rotina (o arquivo rotina.txt em $dados)." -ForegroundColor Green
   Write-Host "Para desligar isso depois, rode o instalador de novo e responda N." -ForegroundColor Green
 } elseif (Test-Path $inicio) {
   Remove-Item $inicio
   Write-Host "Início automático desligado."
 }
 
+Write-Host "`nSeus dados ficam em $dados. As próximas versões o Jarvis baixa sozinho ao abrir." -ForegroundColor Green
 Write-Host "`nTudo pronto! Abrindo o Jarvis..." -ForegroundColor Cyan
 Write-Host "Na primeira vez, o Edge vai pedir para usar o microfone: clique em Permitir."
 Write-Host "Depois do bom-dia, é só dizer 'Jarvis' e o pedido. F11 sai da tela cheia; minimizado ele continua ouvindo."

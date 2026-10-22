@@ -50,6 +50,7 @@ export class JarvisVoice {
       this.neural = Boolean(cfg.neuralVoice);
       this.userName = cfg.name;
       this.brainName = cfg.brain;
+      this.updated = cfg.atualizado;
     } catch {
       this.neural = false;
     }
@@ -165,7 +166,7 @@ export class JarvisVoice {
       this.setVoiceName(r.headers.get("X-Jarvis-Voice") || "servidor");
       return await this.ctx.decodeAudioData(await r.arrayBuffer());
     } catch {
-      this.serverDownUntil = Date.now() + 60_000;
+      this.serverDownUntil = Date.now() + 15_000; // internet oscilando: tenta de novo logo
       return null;
     }
   }

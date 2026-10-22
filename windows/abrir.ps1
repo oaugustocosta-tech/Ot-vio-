@@ -5,12 +5,18 @@ $pasta = Split-Path $PSScriptRoot -Parent
 Set-Location $pasta
 
 # Fecha um servidor do Jarvis que tenha ficado aberto, para o novo assumir a porta.
+# (So os do Jarvis: os marcados com --jarvis, ou com env-file nas versoes antigas.)
 Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
-  Where-Object { $_.CommandLine -match 'server\.js' -and $_.CommandLine -match 'env-file' } |
+  Where-Object { $_.CommandLine -match 'server\.js' -and $_.CommandLine -match 'env-file|--jarvis' } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Start-Sleep -Milliseconds 500
 
-Start-Process node -ArgumentList '--env-file-if-exists=.env', 'server.js' -WorkingDirectory $pasta -WindowStyle Hidden `
+# Atualiza sozinho se tiver versao nova no GitHub (no maximo 2 minutos; sem internet, segue).
+$atualizar = Start-Process node -ArgumentList 'atualizar.js' -WorkingDirectory $pasta -WindowStyle Hidden -PassThru `
+  -RedirectStandardOutput (Join-Path $pasta 'atualizacao.log') -RedirectStandardError (Join-Path $pasta 'atualizacao-erros.log')
+if (-not $atualizar.WaitForExit(120000)) { Stop-Process -Id $atualizar.Id -Force -ErrorAction SilentlyContinue }
+
+Start-Process node -ArgumentList 'server.js', '--jarvis' -WorkingDirectory $pasta -WindowStyle Hidden `
   -RedirectStandardOutput (Join-Path $pasta 'jarvis.log') -RedirectStandardError (Join-Path $pasta 'jarvis-erros.log')
 
 # Espera o servidor responder (no maximo uns 10 segundos).
