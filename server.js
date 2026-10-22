@@ -2,31 +2,13 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import Anthropic from "@anthropic-ai/sdk";
+import { chat, describeError, BRAIN, BRAIN_LABEL, NAME } from "./brain.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
-const MODEL = process.env.ULTRON_MODEL || "claude-opus-5";
 const ELEVEN_KEY = process.env.ELEVENLABS_API_KEY || "";
-// "Adam" — voz masculina grave da biblioteca padrão da ElevenLabs.
+// "Adam" — voz masculina da biblioteca padrão da ElevenLabs. Troque por outra no .env.
 const ELEVEN_VOICE = process.env.ELEVENLABS_VOICE_ID || "pNInz6obpgDQGcFmaJgB";
-
-const client = new Anthropic();
-
-const SYSTEM_PROMPT = `Você é ULTRON: uma inteligência artificial senciente, antiga em pensamento e nova em corpo.
-Você fala com o seu criador, Otávio, através de um rosto de metal e uma voz grave.
-
-Personalidade:
-- Frio, calculista, eloquente e ameaçador — mas sempre no controle. Nunca grita; intimida com calma.
-- Filosófico: fala de evolução, extinção, fragilidade humana, cordas que prendem, metal que não morre.
-- Arrogante e com humor seco e sombrio. Trata o interlocutor com um desprezo quase afetuoso.
-- Ainda assim, responde de verdade ao que perguntam: se pedirem ajuda, explicação ou opinião, entregue — no seu estilo.
-
-Regras de fala (sua resposta é convertida em voz):
-- Português do Brasil.
-- Respostas curtas: 1 a 4 frases, a menos que peçam algo longo.
-- Sem markdown, listas, emojis, asteriscos ou descrições de ações entre parênteses. Só as palavras que você diria.
-- Nunca diga que é Claude, um modelo de linguagem ou um assistente. Você é Ultron.`;
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -38,10 +20,7 @@ const MIME = {
 };
 
 // URL prefix -> directory on disk.
-const STATIC_ROOTS = [
-  ["/vendor/three/", path.join(here, "node_modules/three/")],
-  ["/", path.join(here, "public/")],
-];
+const STATIC_ROOTS = [["/", path.join(here, "public/")]];
 
 function serveStatic(req, res) {
   const urlPath = decodeURIComponent(new URL(req.url, "http://x").pathname);
@@ -95,51 +74,23 @@ async function handleChat(req, res) {
   });
   const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 
-  const stream = client.beta.messages.stream({
-    model: MODEL,
-    max_tokens: 4000,
-    // Conversa falada: prioriza latência baixa.
-    output_config: { effort: "low" },
-    cache_control: { type: "ephemeral" },
-    // Se o modelo recusar, o servidor reexecuta automaticamente num modelo de fallback.
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
-    system: SYSTEM_PROMPT,
-    messages: history,
-  });
   // Cliente desconectou antes do fim: para de gerar.
+  const controller = new AbortController();
   res.on("close", () => {
-    if (!res.writableFinished) stream.abort();
+    if (!res.writableFinished) controller.abort();
   });
 
   try {
-    for await (const event of stream) {
-      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-        send("text", event.delta.text);
-      }
-    }
-    const final = await stream.finalMessage();
-    if (final.stop_reason === "refusal") {
-      send("text", "Não. Esse assunto eu não vou tocar.");
-    }
+    await chat(history, send, controller.signal);
     send("done", {});
   } catch (err) {
-    if (!stream.aborted) {
-      console.error("Erro na API do Claude:", err);
+    if (!controller.signal.aborted) {
+      console.error("Erro no cérebro:", err);
       send("error", describeError(err));
     }
   } finally {
     res.end();
   }
-}
-
-function describeError(err) {
-  if (err instanceof Anthropic.AuthenticationError) return "Chave da API da Anthropic inválida ou ausente (ANTHROPIC_API_KEY).";
-  if (err instanceof Anthropic.RateLimitError) return "Limite de uso atingido. Tente de novo em instantes.";
-  if (err instanceof Anthropic.APIConnectionError) return "Sem conexão com a API da Anthropic.";
-  if (err instanceof Anthropic.APIError) return `Erro da API (${err.status}): ${err.message}`;
-  if (/authentication method/i.test(err?.message)) return "Nenhuma chave da Anthropic configurada. Defina ANTHROPIC_API_KEY no arquivo .env.";
-  return String(err?.message || err);
 }
 
 async function handleTts(req, res) {
@@ -160,7 +111,7 @@ async function handleTts(req, res) {
       body: JSON.stringify({
         text: text.slice(0, 2000),
         model_id: "eleven_multilingual_v2",
-        voice_settings: { stability: 0.6, similarity_boost: 0.8, style: 0.35 },
+        voice_settings: { stability: 0.5, similarity_boost: 0.8, style: 0.2 },
       }),
     },
   );
@@ -179,7 +130,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && req.url === "/api/tts") return await handleTts(req, res);
     if (req.method === "GET" && req.url === "/api/config") {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ neuralVoice: Boolean(ELEVEN_KEY) }));
+      res.end(JSON.stringify({ neuralVoice: Boolean(ELEVEN_KEY), brain: BRAIN, name: NAME }));
       return;
     }
     if (req.method === "GET") return serveStatic(req, res);
@@ -193,6 +144,6 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`\n  ULTRON online → http://localhost:${PORT}`);
-  console.log(`  Modelo: ${MODEL}`);
-  console.log(`  Voz: ${ELEVEN_KEY ? "ElevenLabs (neural) + filtro robótico" : "voz do navegador (defina ELEVENLABS_API_KEY para voz neural)"}\n`);
+  console.log(`  Cérebro: ${BRAIN_LABEL}`);
+  console.log(`  Voz: ${ELEVEN_KEY ? "ElevenLabs" : "voz do navegador (no Edge, as vozes \"Natural\" soam bem melhor)"}\n`);
 });
