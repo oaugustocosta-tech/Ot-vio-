@@ -16,6 +16,15 @@ WScript.Sleep 500
 sh.Run "cmd /c node --env-file-if-exists=.env server.js > jarvis.log 2>&1", 0, False
 WScript.Sleep 2500
 
+' Quando abre junto com o Windows (atalho da pasta Inicializar passa "inicio"), roda a rotina.txt.
+endereco = "http://127.0.0.1:3000/?auto"
+If WScript.Arguments.Count > 0 Then
+  If WScript.Arguments(0) = "inicio" Then endereco = endereco & "&rotina"
+End If
+
 ' Perfil separado do Edge: deixa o Jarvis falar sem clique e lembra a permissao do microfone.
+' Abre em tela cheia (F11 sai). As opcoes "background" deixam ele ouvindo mesmo minimizado.
 perfil = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\JarvisEdge"
-sh.Run "cmd /c start """" msedge --app=http://localhost:3000/?auto --user-data-dir=""" & perfil & """ --autoplay-policy=no-user-gesture-required --window-size=960,820 --no-first-run", 0, False
+opcoes = " --user-data-dir=""" & perfil & """ --autoplay-policy=no-user-gesture-required --start-fullscreen --no-first-run" & _
+  " --disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows"
+sh.Run "cmd /c start """" msedge --app=""" & endereco & """" & opcoes, 0, False

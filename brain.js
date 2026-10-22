@@ -3,6 +3,7 @@
 // Todos recebem as mesmas ferramentas de tools.js.
 import Anthropic from "@anthropic-ai/sdk";
 import { TOOLS, runTool } from "./tools.js";
+import { loadModes } from "./modos.js";
 
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
 const GROQ_KEY = process.env.GROQ_API_KEY || "";
@@ -13,8 +14,11 @@ const CLAUDE_MODEL = process.env.JARVIS_MODEL || "claude-opus-5-5";
 const GEMINI_MODELS = process.env.GEMINI_MODEL
   ? [process.env.GEMINI_MODEL]
   : ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-2.5-flash"];
-// Modelos do Groq: respondem em menos de um segundo. Se um bater no limite, usa o outro.
-const GROQ_MODELS = process.env.GROQ_MODEL ? [process.env.GROQ_MODEL] : ["openai/gpt-oss-120b", "openai/gpt-oss-20b"];
+// Modelos do Groq: respondem em menos de um segundo. Se um bater no limite, usa o próximo.
+// Kimi K2 (da Moonshot, chinesa) raciocina melhor na conversa; os GPT-OSS ficam de reserva.
+const GROQ_MODELS = process.env.GROQ_MODEL
+  ? [process.env.GROQ_MODEL]
+  : ["moonshotai/kimi-k2-instruct-0905", "openai/gpt-oss-120b", "openai/gpt-oss-20b"];
 const MAX_STEPS = 6; // limite de rodadas de ferramenta por pergunta
 
 export const BRAIN = ANTHROPIC_KEY ? "claude" : GROQ_KEY ? "groq" : GEMINI_KEY ? "gemini" : "none";
@@ -24,6 +28,13 @@ export const BRAIN_LABEL = {
   gemini: `Gemini (${GEMINI_MODELS[0]}, plano grátis)`,
   none: "nenhum",
 }[BRAIN];
+
+// Nome curto para o canto da tela.
+const MODEL_NAMES = [[/kimi/i, "Kimi K2"], [/qwen/i, "Qwen"], [/gpt-oss/i, "GPT-OSS"], [/llama/i, "Llama"]];
+export const BRAIN_SHORT =
+  BRAIN === "groq"
+    ? `${MODEL_NAMES.find(([re]) => re.test(GROQ_MODELS[0]))?.[1] || GROQ_MODELS[0]} · Groq`
+    : { claude: "Claude", gemini: "Gemini", none: "nenhum" }[BRAIN];
 
 export const NAME = process.env.JARVIS_USER || "Otávio";
 
@@ -35,7 +46,7 @@ Jeito de falar:
 - Responde de verdade ao que perguntam: explica, opina, ajuda a pensar, conversa sobre qualquer assunto.
 
 Ações:
-- Você pode agir no computador de ${NAME} usando as ferramentas disponíveis (abrir sites, pesquisar, abrir programas, controlar música e volume, bloquear a tela).
+- Você pode agir no computador de ${NAME} usando as ferramentas disponíveis (abrir sites, pesquisar, abrir qualquer programa instalado, fechar programas, ativar os modos que ele criou, tocar e controlar o Spotify (no PC ou na Alexa), mudar o LED do PC, controlar música e volume, mostrar ou esconder sua própria janela, bloquear a tela).
 - Quando ele pedir algo que uma ferramenta faz, use a ferramenta na hora, sem pedir confirmação nem explicar como fazer.
 - Depois de agir, confirme em poucas palavras ("Feito, senhor. YouTube aberto.").
 - Se pedirem algo que nenhuma ferramenta faz (como controlar luzes ou a Alexa), diga que ainda não tem essa conexão.
@@ -46,11 +57,14 @@ Regras de fala (sua resposta vira voz):
 - Sem markdown, listas, emojis, asteriscos ou descrições de ações entre parênteses. Só as palavras que você diria.
 - Nunca diga que é Claude, Gemini, GPT, um modelo de linguagem ou um assistente de IA genérico. Você é Jarvis.`;
 
-// Data e hora vão junto da última mensagem (e não no prompt de sistema) para não quebrar o cache.
+// Data, hora e os modos criados vão junto da última mensagem (e não no prompt de sistema)
+// para não quebrar o cache.
 function withClock(history) {
   const now = new Date().toLocaleString("pt-BR", { dateStyle: "full", timeStyle: "short" });
+  const modos = loadModes().map((m) => m.nome);
+  const ctx = `[Agora: ${now}]${modos.length ? ` [Modos criados: ${modos.join(", ")}]` : ""}`;
   const last = history.at(-1);
-  return [...history.slice(0, -1), { ...last, content: `[Agora: ${now}]\n${last.content}` }];
+  return [...history.slice(0, -1), { ...last, content: `${ctx}\n${last.content}` }];
 }
 
 export class BrainError extends Error {}
@@ -270,8 +284,8 @@ async function groqFetch(messages, signal, only) {
         messages,
         tools: GROQ_TOOLS,
         stream: true,
-        reasoning_effort: "low", // conversa falada: responde rápido
-        include_reasoning: false,
+        // Só os modelos que "pensam antes" aceitam esses dois; conversa falada pede resposta rápida.
+        ...(/gpt-oss|qwen3/.test(model) && { reasoning_effort: /qwen3/.test(model) ? "none" : "low", include_reasoning: false }),
         max_completion_tokens: 1500,
       }),
       signal,
@@ -282,7 +296,9 @@ async function groqFetch(messages, signal, only) {
     }
     lastStatus = res.status;
     lastBody = await res.text();
-    if (!RETRYABLE.has(res.status) && res.status !== 404) break;
+    // 404 ou "modelo desativado": o Groq tira modelos do ar de tempos em tempos.
+    const gone = res.status === 404 || (res.status === 400 && /model/i.test(lastBody) && /decommission|not exist|not found/i.test(lastBody));
+    if (!RETRYABLE.has(res.status) && !gone) break;
     console.warn(`  Groq ${model}: ${res.status}, tentando outro…`);
   }
   throw new BrainError(describeGroqError(lastStatus, lastBody));
