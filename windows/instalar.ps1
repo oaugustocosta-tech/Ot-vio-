@@ -21,6 +21,11 @@ if ($versao -lt 22) {
   Sair 1
 }
 
+# Fecha um Ultron que esteja rodando, para a versão nova assumir.
+Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
+  Where-Object { $_.CommandLine -match 'server\.js' -and $_.CommandLine -match 'env-file' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+
 # 2. Dependências
 Write-Host "Instalando as peças do Ultron (pode levar um minuto)..."
 npm install --omit=dev --no-fund --no-audit
